@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>PBX Automate — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;}
+  html,body,#root{height:100%;margin:0;padding:0;}
+  body{font-family:'Roboto',sans-serif;background:#F4F4F6;color:#1B1B23;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:#DCDCE3;border-radius:8px;}
+  ::-webkit-scrollbar-thumb:hover{background:#C3C3CE;}
+  button{font-family:inherit;}
+  input,textarea,select{font-family:inherit;}
+  .mont{font-family:'Montserrat',sans-serif;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .spin{animation:spin .9s linear infinite;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .fade{animation:fadeUp .2s ease both;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.45;}}
+  .pulse{animation:pulse 1.4s ease-in-out infinite;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef} = React;
+
+/* ═══════════════════ TOKENS ═══════════════════ */
+const C = {
+  ink:'#1B1B23', sub:'#5B5B66', mute:'#8E8E9A', faint:'#A9A9B4',
+  line:'#E4E4EA', lineSoft:'#EDEDF1', bg:'#FFFFFF', canvas:'#FCFCFD',
+  indigo:'#3838E7', indigoDark:'#2A2ABF', indigoSoft:'#EEEEFF',
+  green:'#12A150', greenSoft:'#E7F7EF',
+  red:'#E5484D', redSoft:'#FDECEC',
+  amber:'#E08C36', amberSoft:'#FDF3E7',
+};
+
+/* Statuses exactly as the dashboard filter bar lists them */
+const STATUS = {
+  draft:             {label:'Draft',             dot:'#8E8E9A'},
+  awaiting_approval: {label:'Awaiting approval', dot:'#E08C36'},
+  running:           {label:'Running',           dot:'#3838E7'},
+  scheduled:         {label:'Scheduled',         dot:'#3838E7'},
+  action_required:   {label:'Action required',   dot:'#E5484D'},
+  paused:            {label:'Paused',            dot:'#E08C36'},
+  review_results:    {label:'Review results',    dot:'#12A150'},
+  synced:            {label:'Synced',            dot:'#12A150'},
+};
+const FILTER_ORDER = ['draft','awaiting_approval','running','scheduled','action_required','paused','review_results','synced'];
+
+/* Task-type visual language on the canvas */
+const TYPE = {
+  experiment:{bar:'#3838E7', chip:'#EEEEFF', ic:'#3838E7'},
+  goal:      {bar:'#F07A2B', chip:'#FFF0E4', ic:'#E2701F'},
+  spec:      {bar:'#3838E7', chip:'#F2F2F7', ic:'#5B5B66'},
+  variation: {bar:'#3838E7', chip:'#EFEEFF', ic:'#5757D6'},
+  addgoal:   {bar:'#12A150', chip:'#E4F7ED', ic:'#0E8A44'},
+  segment:   {bar:'#12A150', chip:'#E4F7ED', ic:'#0E8A44'},
+  traffic:   {bar:'#12A150', chip:'#E4F7ED', ic:'#0E8A44'},
+  finish:    {bar:'#3838E7', chip:'#EEEEFF', ic:'#3838E7'},
+};
+
+/* ═══════════════════ ICONS ═══════════════════ */
+const I = {
+  sparkle:  p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><path d="M8 1.5l1.4 3.6L13 6.5l-3.6 1.4L8 11.5 6.6 7.9 3 6.5l3.6-1.4L8 1.5z" fill="currentColor"/><circle cx="12.5" cy="12" r="1.3" fill="currentColor"/></svg>,
+  target:   p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8.5" r="5.2" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8.5" r="1.9" stroke="currentColor" strokeWidth="1.4"/><path d="M11.4 5.1L14 2.5M12.8 2v2.2H15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  doc:      p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><path d="M4 2h5l3 3v9H4V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M6 8h4M6 10.5h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+  plus:     p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>,
+  crosshair:p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="5.4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><path d="M8 .9v2M8 13.1v2M15.1 8h-2M2.9 8h-2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+  split:    p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><path d="M2 12.5L9 5.5M9 5.5H13M9 5.5V9.5M2 4l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  rocket:   p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><path d="M9.5 2.5c2.5 0 4 1.5 4 4 0 3-3.5 6-5.5 7L6 11.5 4 9.5c1-2 4-7 5.5-7z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><circle cx="9.7" cy="6.3" r="1.2" stroke="currentColor" strokeWidth="1.2"/><path d="M4.5 11.5c-1 .5-1.5 2-1.5 2s1.5-.5 2-1.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>,
+  check:    p=><svg width="16" height="16" viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="6.3" stroke="currentColor" strokeWidth="1.4"/><path d="M5.4 8.1l1.9 1.9 3.4-3.7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  alert:    p=><svg width="16" height="16" viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="6.3" stroke="currentColor" strokeWidth="1.4"/><path d="M8 4.8v4M8 10.8v.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+  info:     p=><svg width="16" height="16" viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="6.3" stroke="currentColor" strokeWidth="1.4"/><path d="M8 7.3v4M8 4.9v.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+  chevDown: p=><svg width="12" height="12" viewBox="0 0 12 12" fill="none" {...p}><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  chevRight:p=><svg width="12" height="12" viewBox="0 0 12 12" fill="none" {...p}><path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  search:   p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><circle cx="7" cy="7" r="4.8" stroke="currentColor" strokeWidth="1.5"/><path d="M10.6 10.6L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+  list:     p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.6M2.5 8h.6M2.5 12h.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+  kanban:   p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><rect x="2" y="2.5" width="4.2" height="11" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="9.8" y="2.5" width="4.2" height="7" rx="1" stroke="currentColor" strokeWidth="1.4"/></svg>,
+  filter:   p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><path d="M2 4h12M4.5 8h7M6.5 12h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+  pencil:   p=><svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...p}><path d="M11.2 2.3l2.5 2.5L5.4 13H2.9v-2.5l8.3-8.2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>,
+  kebab:    p=><svg width="14" height="14" viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="3" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="13" r="1.3" fill="currentColor"/></svg>,
+  close:    p=><svg width="14" height="14" viewBox="0 0 16 16" fill="none" {...p}><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+  repeat:   p=><svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...p}><path d="M2.5 6.5A5.5 5.5 0 0112 5M13.5 9.5A5.5 5.5 0 014 11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M12.4 2.2v3h-3M3.6 13.8v-3h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  calendar: p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><rect x="2" y="3.2" width="12" height="11" rx="1.6" stroke="currentColor" strokeWidth="1.4"/><path d="M2 6.4h12M5.3 1.8v2.6M10.7 1.8v2.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+  clock:    p=><svg width="14" height="14" viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.4"/><path d="M8 4.6V8l2.3 1.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  bulb:     p=><svg width="14" height="14" viewBox="0 0 16 16" fill="none" {...p}><path d="M8 1.8a4 4 0 00-2.3 7.3v1.6h4.6V9.1A4 4 0 008 1.8z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><path d="M6.4 12.8h3.2M7 14.4h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+  trash:    p=><svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...p}><path d="M2.8 4.2h10.4M6.4 4.2V2.8h3.2v1.4M4.2 4.2l.6 9h6.4l.6-9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  copy:     p=><svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...p}><rect x="5" y="5" width="8.5" height="8.5" rx="1.4" stroke="currentColor" strokeWidth="1.3"/><path d="M11 5V3.9c0-.8-.6-1.4-1.4-1.4H3.9c-.8 0-1.4.6-1.4 1.4v5.7c0 .8.6 1.4 1.4 1.4H5" stroke="currentColor" strokeWidth="1.3"/></svg>,
+  pause:    p=><svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...p}><path d="M6 3.2v9.6M10 3.2v9.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+  play:     p=><svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...p}><path d="M4.8 3.2l8 4.8-8 4.8V3.2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>,
+  history:  p=><svg width="14" height="14" viewBox="0 0 16 16" fill="none" {...p}><path d="M2.6 8a5.4 5.4 0 105.4-5.4A5.4 5.4 0 003.2 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M2.2 2.4v2.9h2.9M8 5.2V8l2 1.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  arrowLeft:p=><svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...p}><path d="M13 8H3.4M7 3.6L3 8l4 4.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  arrowRight:p=><svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...p}><path d="M3 8h9.6M9 3.6L13 8l-4 4.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  desktop:  p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><rect x="1.8" y="3" width="12.4" height="8.4" rx="1.3" stroke="currentColor" strokeWidth="1.3"/><path d="M6 13.6h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+  tablet:   p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><rect x="3.4" y="2" width="9.2" height="12" rx="1.4" stroke="currentColor" strokeWidth="1.3"/></svg>,
+  mobile:   p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><rect x="4.8" y="2" width="6.4" height="12" rx="1.4" stroke="currentColor" strokeWidth="1.3"/></svg>,
+  panel:    p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><rect x="1.8" y="3" width="12.4" height="10" rx="1.4" stroke="currentColor" strokeWidth="1.3"/><path d="M10 3v10" stroke="currentColor" strokeWidth="1.3"/></svg>,
+  code:     p=><svg width="15" height="15" viewBox="0 0 16 16" fill="none" {...p}><path d="M5.6 5L2.8 8l2.8 3M10.4 5L13.2 8l-2.8 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  logo:     p=><svg width="22" height="22" viewBox="0 0 22 22" fill="none" {...p}><rect x="1.5" y="1.5" width="8" height="8" rx="2.6" fill="#1B1B23"/><rect x="12.5" y="1.5" width="8" height="8" rx="2.6" fill="#1B1B23"/><rect x="1.5" y="12.5" width="8" height="8" rx="2.6" fill="#1B1B23"/><rect x="12.5" y="12.5" width="8" height="8" rx="2.6" fill="#1B1B23"/></svg>,
+  chat:     p=><svg width="16" height="16" viewBox="0 0 18 18" fill="none" {...p}><circle cx="9" cy="9" r="7.2" stroke="currentColor" strokeWidth="1.4"/><path d="M9 6v6M6 9h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+  flow:     p=><svg width="16" height="16" viewBox="0 0 18 18" fill="none" {...p}><rect x="2" y="2.5" width="5" height="4" rx="1.2" stroke="currentColor" strokeWidth="1.4"/><rect x="11" y="2.5" width="5" height="4" rx="1.2" stroke="currentColor" strokeWidth="1.4"/><rect x="6.5" y="11.5" width="5" height="4" rx="1.2" stroke="currentColor" strokeWidth="1.4"/><path d="M4.5 6.5v3h9v-3M9 9.5v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+  gear:     p=><svg width="16" height="16" viewBox="0 0 18 18" fill="none" {...p}><circle cx="9" cy="9" r="2.6" stroke="currentColor" strokeWidth="1.4"/><path d="M9 1.8v1.9M9 14.3v1.9M16.2 9h-1.9M3.7 9H1.8M14.1 3.9l-1.3 1.3M5.2 12.8l-1.3 1.3M14.1 14.1l-1.3-1.3M5.2 5.2L3.9 3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+};
+
+/* ═══════════════════ DATA ═══════════════════ */
+const AUTOMATIONS = [
+  {
+    id:'a1', name:'Product page recommendations', by:'Paul Tremblay', ago:'3 weeks ago',
+    status:'running', bar:'#3838E7', menuAction:'pause',
+    desc:'Add an AI-driven recommendation block to product pages and measure add-to-cart lift.',
+    chips:[], progress:{done:3,total:5,current:'Collecting visitor data'},
+    actionRequired:[], forReview:[], inProgress:[{id:'ip1',name:'Collecting visitor data',pct:40}],
+  },
+  {
+    id:'a2', name:'Homepage personalization', by:'Amelie Roux', ago:'1 week ago',
+    status:'scheduled', bar:'#3838E7', menuAction:'run',
+    when:'June 14, 2026 - 09:00', repeats:'Repeats weekly',
+    desc:'Personalize the homepage hero for returning visitors based on their last viewed category.',
+    chips:[], progress:null, actionRequired:[], forReview:[], inProgress:[],
+  },
+];
+
+/* Canvas graph — fixed serpentine layout, exactly as drawn in Figma */
+const GRAPH = {
+  start:  {label:'Create experiment',   sub:'Checkout flow optimization', type:'experiment', x:20,  y:250},
+  finish: {label:'Automation complete', sub:'Review results and sync assets to dashboards', type:'finish', x:20, y:700},
+  groups:[
+    {n:1, title:'Add custom goals', x:400, y:250, done:1, total:1, tasks:[
+      {label:'Create goal', sub:'Checkout button clicks', type:'goal', st:'done'},
+    ]},
+    {n:2, title:'Write specs', x:790, y:305, done:1, total:1, tasks:[
+      {label:'Write specs', sub:'3 x .knl-checkout', type:'spec', st:'done'},
+    ]},
+    {n:3, title:'Add variations', x:790, y:570, done:3, total:3, tasks:[
+      {label:'Add variation', sub:'Simplified form',  type:'variation', st:'done'},
+      {label:'Add variation', sub:'Express checkout', type:'variation', st:'action'},
+      {label:'Add variation', sub:'Trust badges',     type:'variation', st:'done'},
+    ]},
+    {n:4, title:'Experiment configuration', x:400, y:570, done:3, total:3, tasks:[
+      {label:'Add goal',      sub:'Checkout button clicks', type:'addgoal', st:'done'},
+      {label:'Add segment',   sub:'New visitors, USA',      type:'segment', st:'action'},
+      {label:'Split traffic', sub:'33 / 33 / 33',           type:'traffic', st:'done'},
+    ]},
+  ],
+};
+const NODE_W = 300, NODE_H = 58, NODE_GAP = 10, GBOX_PAD = 12;
+const gboxH = g => GBOX_PAD*2 + g.tasks.length*NODE_H + (g.tasks.length-1)*NODE_GAP;
+
+const ACTIVITY = [
+  {t:'Automation completed',                    d:'2026-08-10 17:45', c:'#8E8E9A'},
+  {t:'Automated resumed',                       d:'2026-08-10 14:22', c:'#12A150'},
+  {t:'Action needed: Approve variation copy',   d:'2026-08-10 13:30', c:'#E5484D'},
+  {t:'Automation paused by user',               d:'2026-08-10 11:05', c:'#E08C36'},
+  {t:'Automation running',                      d:'2026-08-10 10:30', c:'#12A150'},
+  {t:'Building automation',                     d:'2026-08-10 09:45', c:'#E5489B'},
+  {t:'Automation created',                      d:'2026-08-10 09:15', c:'#8E8E9A'},
+];
+
+const QUICK_PROMPTS = ['Create an experiment','Create a workflow','Generate test ideas','Create a script'];
+const CLARIFY = [
+  {k:'page',     q:'Which page should the experiment run on?', opts:['Checkout page','Cart page','Full funnel']},
+  {k:'duration', q:'How long should it run before results?',   opts:['1 week','2 weeks','4 weeks']},
+];
+
+/* Outstanding work on an automation. The review arrows page through these — resolved
+   items drop out of the sequence rather than staying reachable. */
+const openActions = a => (a.actionRequired||[]).filter(t=>!t.resolved);
+const openAssets  = a => (a.forReview||[]).filter(x=>x.state!=='reviewed');
+const findItem = (a,id) =>
+  (a.actionRequired||[]).find(t=>t.id===id) || (a.forReview||[]).find(x=>x.id===id) || null;
+
+/* Demo driver for Unite. Maps each screen of the prototype onto the walkthrough
+   Fred asked for, so the presenter can check where they are without a script. */
+const DEMO = {
+  prompt:   {tag:'SCREEN 1 OF 7', what:'Kai, with the checkout prompt.',
+             next:'Paste the prompt and press send.'},
+  building: {tag:'SCREEN 2 OF 7', what:'The workflow is being generated from the prompt.',
+             next:'Answer the two questions Kai asks.'},
+  approve:  {tag:'SCREEN 2 OF 7', what:'Groups, tasks and steps for the prompt, awaiting your approval.',
+             next:'Walk the plan, then APPROVE.'},
+  started:  {tag:'SCREEN 2 OF 7 - DONE', what:'Approved. The automation is live and working.',
+             next:'BACK TO AUTOMATIONS, then wait for the action badges to appear.'},
+  pending:  {tag:'SCREEN 3 OF 7', what:'Pending actions on the running automation.',
+             next:'Hit Answer on the first action.'},
+  build:    {tag:'SCREEN 4 OF 7', what:'Review and approve a change in the PBX build.',
+             next:'APPROVE - it advances straight to the targeting action.'},
+  target:   {tag:'SCREEN 5 OF 7', what:'Review and approve the targeting.',
+             next:'APPROVE to clear the last action.'},
+  sync:     {tag:'SCREEN 6 OF 7', what:'Every asset reviewed, ready to go to the dashboards.',
+             next:'SYNC ASSETS TO DASHBOARDS.'},
+  kanban:   {tag:'SCREEN 7 OF 7', what:'The dashboard, three workflows only.',
+             next:'Switch to Kanban - that is the closing view.'},
+};
+
+function DemoHint({step}){
+  const [open,setOpen]=useState(false);
+  if(!step) return null;
+  return (
+    <span style={{position:'relative',display:'flex',flexShrink:0}}
+      onMouseEnter={()=>setOpen(true)} onMouseLeave={()=>setOpen(false)}>
+      <button aria-label="Demo step" style={{width:24,height:24,borderRadius:'50%',padding:0,
+        border:`1px solid ${C.line}`,background:'#fff',color:C.mute,cursor:'help',
+        display:'flex',alignItems:'center',justifyContent:'center'}}><I.info/></button>
+      {open &&
+        <div className="fade" style={{position:'absolute',top:'calc(100% + 9px)',left:'50%',
+          transform:'translateX(-50%)',width:308,background:'#1B1B23',color:'#fff',borderRadius:10,
+          padding:'13px 15px',zIndex:90,boxShadow:'0 12px 34px rgba(20,20,40,.28)'}}>
+          <div style={{fontSize:10.5,fontWeight:700,letterSpacing:'.07em',color:'#A9A9FF',marginBottom:7}}>{step.tag}</div>
+          <div style={{fontSize:12.5,lineHeight:1.55}}>{step.what}</div>
+          <div style={{fontSize:12,lineHeight:1.5,color:'#C9C9D4',marginTop:9,paddingTop:9,
+            borderTop:'1px solid rgba(255,255,255,.15)'}}>
+            <strong style={{color:'#fff',fontWeight:600}}>Next:</strong> {step.next}</div>
+        </div>}
+    </span>
+  );
+}
+
+/* ═══════════════════ PRIMITIVES ═══════════════════ */
+function StatusBadge({s, size='sm'}){
+  const cfg = STATUS[s]; if(!cfg) return null;
+  const f = size==='sm' ? 11.5 : 12.5;
+  return <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:f,color:C.sub,whiteSpace:'nowrap'}}>
+    <span style={{width:6,height:6,borderRadius:'50%',background:cfg.dot,flexShrink:0}}/>{cfg.label}
+  </span>;
+}
+
+function Btn({children, kind='ghost', sm, onClick, disabled, style}){
+  const base = {display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,borderRadius:6,
+    fontSize:sm?11.5:12.5,fontWeight:500,letterSpacing:'.03em',cursor:disabled?'not-allowed':'pointer',
+    padding:sm?'6px 12px':'9px 16px',transition:'background .12s,border-color .12s',whiteSpace:'nowrap'};
+  const kinds = {
+    primary:{background:disabled?'#E4E4EA':C.indigo,color:disabled?'#A9A9B4':'#fff',border:'1px solid transparent'},
+    outline:{background:'#fff',color:disabled?'#A9A9B4':C.indigo,border:`1px solid ${disabled?'#E4E4EA':'#C9C9F5'}`},
+    ghost:  {background:'#fff',color:C.sub,border:`1px solid ${C.line}`},
+    danger: {background:'#fff',color:C.red,border:`1px solid ${C.line}`},
+  };
+  return <button onClick={disabled?undefined:onClick} disabled={disabled} style={{...base,...kinds[kind],...style}}>{children}</button>;
+}
+
+function Section({icon, iconColor, title, badge, badgeBg, badgeColor, open, onToggle, danger, children, chevron='auto'}){
+  return (
+    <div style={{border:`1px solid ${danger&&open?C.red:C.line}`,borderRadius:10,background:'#fff',overflow:'hidden'}}>
+      <button onClick={onToggle} style={{width:'100%',display:'flex',alignItems:'center',gap:9,padding:'13px 14px',
+        background:'none',border:'none',cursor:'pointer',textAlign:'left'}}>
+        <span style={{color:iconColor,display:'flex',flexShrink:0}}>{icon}</span>
+        <span style={{fontSize:13.5,fontWeight:600,color:C.ink,flex:1}}>{title}</span>
+        {badge!=null && <span style={{background:badgeBg,color:badgeColor,fontSize:10.5,fontWeight:600,
+          padding:'3px 8px',borderRadius:20,whiteSpace:'nowrap'}}>{badge}</span>}
+        <span style={{color:C.faint,display:'flex',transform:open?'rotate(0deg)':'rotate(0deg)'}}>
+          {chevron==='none' ? null : (open ? <I.chevDown/> : <I.chevRight/>)}
+        </span>
+      </button>
+      {open && <div style={{padding:'0 14px 14px'}}>{children}</div>}
+    </div>
+  );
+}
+
+function SegBar({done,total}){
+  return <div style={{display:'flex',gap:5,marginTop:9}}>
+    {Array.from({length:total}).map((_,i)=>
+      <div key={i} style={{flex:1,height:5,borderRadius:3,background:i<done?C.indigo:'#E7E7ED'}}/>)}
+  </div>;
+}
+
+function Pill({label,dot}){
+  return <span style={{display:'inline-flex',alignItems:'center',gap:5,background:'#F3F3F7',borderRadius:5,
+    padding:'4px 8px',fontSize:11,color:C.sub,fontWeight:500,whiteSpace:'nowrap',flexShrink:0}}>
+    {dot && <span style={{width:6,height:6,borderRadius:'50%',background:dot}}/>}{label}
+  </span>;
+}
+
+/* ═══════════════════ CANVAS ═══════════════════ */
+const ST_ICON = {
+  done:     <span style={{color:'#9A9AA6'}}><I.check/></span>,
+  review:   <span style={{color:C.green}}><I.check/></span>,
+  action:   <span style={{color:C.red}}><I.alert/></span>,
+  progress: <span style={{color:C.indigo}}><I.info/></span>,
+};
+const TYPE_ICON = {experiment:<I.sparkle/>,goal:<I.target/>,spec:<I.doc/>,variation:<I.plus/>,
+  addgoal:<I.target/>,segment:<I.crosshair/>,traffic:<I.split/>,finish:<I.rocket/>};
+
+function NodeCard({t, plain}){
+  const ty = TYPE[t.type];
+  const isAction = t.st==='action' && !plain;
+  return (
+    <div style={{width:NODE_W,height:NODE_H,display:'flex',alignItems:'stretch',background:'#fff',
+      border:`1px solid ${isAction?C.red:'#E7E7ED'}`,borderRadius:9,overflow:'hidden',
+      boxShadow:'0 1px 2px rgba(20,20,40,.05)'}}>
+      <div style={{width:4,background:ty.bar,flexShrink:0}}/>
+      <div style={{flex:1,display:'flex',alignItems:'center',gap:10,padding:'0 11px',minWidth:0}}>
+        <div style={{width:30,height:30,borderRadius:8,background:ty.chip,color:ty.ic,display:'flex',
+          alignItems:'center',justifyContent:'center',flexShrink:0}}>{TYPE_ICON[t.type]}</div>
+        <div style={{minWidth:0,flex:1}}>
+          <div style={{fontSize:12.5,fontWeight:600,color:C.ink,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.label}</div>
+          <div style={{fontSize:11.5,color:C.mute,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.sub}</div>
+        </div>
+        {!plain && t.st && <span style={{flexShrink:0,display:'flex'}}>{ST_ICON[t.st]}</span>}
+      </div>
+    </div>
+  );
+}
+
+function TerminalNode({node, label, plain}){
+  const ty = TYPE[node.type];
+  return (
+    <div style={{position:'absolute',left:node.x,top:node.y}}>
+      <div style={{fontSize:12.5,color:C.sub,marginBottom:9,letterSpacing:'.04em'}}>{label}</div>
+      <div style={{width:NODE_W+30,minHeight:NODE_H,display:'flex',alignItems:'stretch',background:'#fff',
+        border:'1px solid #E7E7ED',borderRadius:9,overflow:'hidden',boxShadow:'0 1px 2px rgba(20,20,40,.05)'}}>
+        <div style={{width:4,background:ty.bar,flexShrink:0}}/>
+        <div style={{flex:1,display:'flex',alignItems:'center',gap:10,padding:'10px 11px',minWidth:0}}>
+          <div style={{width:30,height:30,borderRadius:8,background:ty.chip,color:ty.ic,display:'flex',
+            alignItems:'center',justifyContent:'center',flexShrink:0}}>{TYPE_ICON[node.type]}</div>
+          <div style={{minWidth:0,flex:1}}>
+            <div style={{fontSize:12.5,fontWeight:600,color:C.ink}}>{node.label}</div>
+            <div style={{fontSize:11.5,color:C.mute,lineHeight:1.35}}>{node.sub}</div>
+          </div>
+          {!plain && node.type==='experiment' && <span style={{flexShrink:0,display:'flex'}}>{ST_ICON.done}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupBox({g, plain}){
+  const h = gboxH(g);
+  const allDone = g.done===g.total;
+  return (
+    <div style={{position:'absolute',left:g.x,top:g.y}}>
+      <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:9,width:NODE_W+GBOX_PAD*2}}>
+        <span style={{width:19,height:19,borderRadius:'50%',background:C.indigo,color:'#fff',fontSize:11,
+          fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{g.n}</span>
+        <span style={{fontSize:13,fontWeight:600,color:C.ink}}>{g.title}</span>
+        {!plain && allDone && <span style={{color:'#9A9AA6',display:'flex'}}><I.check/></span>}
+        <span style={{marginLeft:'auto',fontSize:12,color:C.mute,fontVariantNumeric:'tabular-nums'}}>{g.done}/{g.total}</span>
+      </div>
+      <div style={{width:NODE_W+GBOX_PAD*2,height:h,border:'1.5px dashed #BDBDF0',borderRadius:12,
+        padding:GBOX_PAD,display:'flex',flexDirection:'column',gap:NODE_GAP}}>
+        {g.tasks.map((t,i)=><NodeCard key={i} t={t} plain={plain}/>)}
+      </div>
+    </div>
+  );
+}
+
+function Connectors(){
+  const g1=GRAPH.groups[0], g2=GRAPH.groups[1], g3=GRAPH.groups[2], g4=GRAPH.groups[3];
+  const bw = NODE_W+GBOX_PAD*2;
+  const s = GRAPH.start, f = GRAPH.finish;
+  const paths = [
+    // start → group 1
+    `M ${s.x+NODE_W+30} ${s.y+29+21} C ${s.x+NODE_W+70} ${s.y+50+21}, ${g1.x-40} ${g1.y+60}, ${g1.x-4} ${g1.y+70}`,
+    // group 1 → group 2
+    `M ${g1.x+bw+4} ${g1.y+29+gboxH(g1)-40} C ${g1.x+bw+45} ${g1.y+gboxH(g1)}, ${g2.x-45} ${g2.y+70}, ${g2.x-4} ${g2.y+62}`,
+    // group 2 → group 3 (down)
+    `M ${g2.x+bw/2+40} ${g2.y+29+gboxH(g2)+4} L ${g2.x+bw/2+40} ${g3.y-6}`,
+    // group 3 → group 4
+    `M ${g3.x-4} ${g3.y+29+110} C ${g3.x-45} ${g3.y+140}, ${g4.x+bw+45} ${g4.y+130}, ${g4.x+bw+4} ${g4.y+120}`,
+    // group 4 → finish
+    `M ${g4.x-4} ${g4.y+29+150} C ${g4.x-45} ${g4.y+185}, ${f.x+NODE_W+70} ${f.y+60}, ${f.x+NODE_W+34} ${f.y+48}`,
+  ];
+  return (
+    <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',overflow:'visible'}}>
+      <defs>
+        <marker id="cArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9" fill="none" stroke="#B9B9C6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+        </marker>
+      </defs>
+      {paths.map((d,i)=><path key={i} d={d} fill="none" stroke="#C9C9D4" strokeWidth="1.5" markerEnd="url(#cArrow)"/>)}
+    </svg>
+  );
+}
+
+function CanvasStage({plain}){
+  return (
+    <div style={{position:'relative',width:1180,height:1000}}>
+      <Connectors/>
+      <TerminalNode node={GRAPH.start} label="START" plain={plain}/>
+      <TerminalNode node={GRAPH.finish} label="FINISH" plain={plain}/>
+      {GRAPH.groups.map(g=><GroupBox key={g.n} g={g} plain={plain}/>)}
+    </div>
+  );
+}
+
+function SkeletonStage(){
+  return (
+    <div style={{position:'relative',width:1100,padding:'30px 0'}}>
+      {[0,1,2].map(r=>
+        <div key={r} style={{display:'flex',gap:36,marginBottom:34}}>
+          {[0,1,2,3].map(c=>
+            <div key={c} className="pulse" style={{width:236,height:52,background:'#fff',border:'1px solid #EDEDF1',
+              borderRadius:9,display:'flex',alignItems:'center',gap:10,padding:'0 12px',
+              animationDelay:`${(r*4+c)*90}ms`}}>
+              <div style={{width:28,height:28,borderRadius:7,background:'#F0F0F4',flexShrink:0}}/>
+              <div style={{flex:1}}>
+                <div style={{height:7,background:'#F0F0F4',borderRadius:4,marginBottom:6,width:'78%'}}/>
+                <div style={{height:7,background:'#F5F5F8',borderRadius:4,width:'52%'}}/>
+              </div>
+            </div>)}
+        </div>)}
+      <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}}>
+        <path d="M 240 56 L 272 56 M 512 56 L 544 56 M 784 56 L 816 56 M 900 82 L 900 116 M 240 142 L 272 142 M 512 142 L 544 142 M 130 168 L 130 202 M 400 168 L 400 202 M 240 228 L 272 228 M 512 228 L 544 228" stroke="#E4E4EA" strokeWidth="1.5"/>
+      </svg>
+    </div>
+  );
+}
+
+function TaskLegend(){
+  const rows=[['progress','In progress'],['action','Action required'],['review','Ready for review'],['done','Done']];
+  return (
+    <div style={{position:'absolute',right:28,bottom:28,background:'#fff',border:`1px solid ${C.line}`,
+      borderRadius:10,padding:'14px 18px',boxShadow:'0 4px 14px rgba(20,20,40,.06)'}}>
+      <div style={{fontSize:10.5,letterSpacing:'.09em',color:C.faint,marginBottom:10}}>TASK STATUS</div>
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {rows.map(([k,l])=>
+          <div key={k} style={{display:'flex',alignItems:'center',gap:9}}>
+            {ST_ICON[k]}<span style={{fontSize:12.5,color:C.sub}}>{l}</span>
+          </div>)}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ KAI PANEL CHROME ═══════════════════ */
+function KaiRail({onHome}){
+  const item=(icon,label,active,onClick)=>(
+    <button onClick={onClick} style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',
+      borderRadius:7,border:'none',cursor:'pointer',background:active?'#EFEFFB':'transparent',
+      color:active?C.indigo:C.ink,fontSize:13.5,fontWeight:500,textAlign:'left'}}>
+      <span style={{display:'flex',color:active?C.indigo:'#6B6B78'}}>{icon}</span>{label}
+    </button>);
+  const link=t=><div key={t} style={{fontSize:12.5,color:C.sub,padding:'6px 10px',borderRadius:6,cursor:'pointer',
+    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
+    onMouseOver={e=>e.currentTarget.style.background='#F6F6F9'}
+    onMouseOut={e=>e.currentTarget.style.background='transparent'}>{t}</div>;
+  return (
+    <div style={{width:250,borderRight:`1px solid ${C.line}`,background:'#fff',display:'flex',flexDirection:'column',flexShrink:0}}>
+      <div style={{padding:'12px 10px',display:'flex',flexDirection:'column',gap:2}}>
+        {item(<I.chat/>,'New chat',false,onHome)}
+        {item(<I.flow/>,'Automations',true,()=>{})}
+        {item(<I.gear/>,'AI Settings',false,()=>{})}
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'6px 10px 10px'}}>
+        <div style={{borderTop:`1px solid ${C.lineSoft}`,paddingTop:12,marginBottom:6,display:'flex',
+          alignItems:'center',justifyContent:'space-between',padding:'12px 10px 6px'}}>
+          <span style={{fontSize:12.5,color:C.mute}}>Pinned automations</span>
+          <span style={{color:C.faint,display:'flex',transform:'rotate(180deg)'}}><I.chevDown/></span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderRadius:6}}>
+          <span style={{fontSize:12.5,color:C.sub,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>Automated A/B test on redesign</span>
+          <span style={{color:C.faint,display:'flex'}}><I.kebab/></span>
+        </div>
+        {link('Mobile UX improvements - iterations')}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 10px 6px'}}>
+          <span style={{fontSize:12.5,color:C.mute}}>Recent automations</span>
+          <span style={{color:C.faint,display:'flex',transform:'rotate(180deg)'}}><I.chevDown/></span>
+        </div>
+        {['June automated experiments','Low engagement users - targeted camp…','Checkout optimization - home page',
+          'Test ideas for home page redesign','Segment creation for Canada campaign','Streamlined checkout flow',
+          'Shop page winter update experiment'].map(link)}
+      </div>
+      <div style={{borderTop:`1px solid ${C.line}`}}>
+        <button style={{width:'100%',display:'flex',alignItems:'center',gap:9,padding:'14px 16px',background:'none',
+          border:'none',cursor:'pointer',fontSize:13,color:C.ink}}>
+          <span style={{color:C.sub,display:'flex'}}><I.arrowLeft/></span>Back to app</button>
+        <button style={{width:'100%',display:'flex',alignItems:'center',gap:9,padding:'14px 16px',background:'none',
+          border:'none',borderTop:`1px solid ${C.line}`,cursor:'pointer',fontSize:13,color:C.ink}}>
+          <span style={{color:C.sub,display:'flex'}}><I.panel/></span>Collapse</button>
+      </div>
+    </div>
+  );
+}
+
+function KaiShell({children,onHome,onClose}){
+  return (
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#fff'}}>
+      <div style={{height:52,borderBottom:`1px solid ${C.line}`,display:'flex',alignItems:'center',
+        padding:'0 18px',gap:12,flexShrink:0}}>
+        <span className="mont" style={{fontSize:15,fontWeight:600}}>Automations</span>
+        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:14,color:C.mute}}>
+          <span style={{cursor:'pointer',letterSpacing:1}}>⋯</span>
+          <span style={{cursor:'pointer',display:'flex'}}><I.panel/></span>
+          <span onClick={onClose} style={{cursor:'pointer',display:'flex'}}><I.close/></span>
+        </div>
+      </div>
+      <div style={{flex:1,display:'flex',overflow:'auto'}}>
+        <KaiRail onHome={onHome}/>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ APP HEADER + HOME (entry point) ═══════════════════ */
+function AppHeader({hint}){
+  return (
+    <div style={{height:62,background:'#fff',borderBottom:`1px solid ${C.line}`,display:'flex',
+      alignItems:'center',padding:'0 26px',gap:14,flexShrink:0}}>
+      <I.logo/>
+      <span className="mont" style={{fontSize:19,fontWeight:700,letterSpacing:'-.02em'}}>Kameleoon</span>
+      <span style={{display:'inline-flex',alignItems:'center',gap:6,border:`1px solid ${C.line}`,
+        borderRadius:20,padding:'6px 13px'}}>
+        <span style={{color:C.indigo,display:'flex'}}><I.sparkle/></span>
+        <span style={{fontSize:13,fontWeight:500,color:C.indigo}}>Kai</span>
+      </span>
+      <DemoHint step={hint}/>
+      <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:18,color:C.sub}}>
+        <span style={{cursor:'pointer',display:'flex'}}><I.gear/></span>
+        <span style={{cursor:'pointer',display:'flex'}}>
+          <svg width="17" height="17" viewBox="0 0 18 18" fill="none">
+            <path d="M4.4 7.2a4.6 4.6 0 119.2 0c0 3.4 1.4 4.5 1.4 4.5H3s1.4-1.1 1.4-4.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+            <path d="M7.3 14.2a1.9 1.9 0 003.4 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+        </span>
+        <span style={{width:34,height:34,borderRadius:'50%',background:'#FFD95C',display:'flex',
+          alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#1B1B23',
+          cursor:'pointer'}}>PT</span>
+      </div>
+    </div>
+  );
+}
+
+function HomeSidebar({onAutomations,onNew}){
+  const [latest,setLatest]=useState(true); const [pinned,setPinned]=useState(true);
+  const nav=(icon,label,active,onClick,trailing)=>(
+    <div style={{display:'flex',alignItems:'center',gap:4}}>
+      <button onClick={onClick} style={{flex:1,display:'flex',alignItems:'center',gap:12,padding:'11px 12px',
+        borderRadius:8,border:'none',cursor:'pointer',background:active?'#EFEFFB':'transparent',
+        color:active?C.indigo:C.ink,fontSize:14.5,fontWeight:500,textAlign:'left'}}>
+        <span style={{display:'flex',color:active?C.indigo:'#6B6B78'}}>{icon}</span>{label}
+      </button>
+      {trailing}
+    </div>);
+  const head=(label,open,toggle)=>(
+    <button onClick={toggle} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
+      background:'none',border:'none',cursor:'pointer',padding:'8px 12px',color:C.mute,fontSize:13.5}}>
+      {label}<span style={{display:'flex',transform:open?'none':'rotate(-90deg)',transition:'transform .15s'}}><I.chevDown/></span>
+    </button>);
+  const item=t=><div key={t} style={{fontSize:13.5,color:C.sub,padding:'8px 12px',borderRadius:7,cursor:'pointer',
+    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
+    onMouseOver={e=>e.currentTarget.style.background='#F6F6F9'}
+    onMouseOut={e=>e.currentTarget.style.background='transparent'}>{t}</div>;
+
+  return (
+    <div style={{width:300,borderRight:`1px solid ${C.line}`,background:'#fff',display:'flex',
+      flexDirection:'column',flexShrink:0}}>
+      <div style={{padding:'14px 12px 0',display:'flex',flexDirection:'column',gap:2}}>
+        {nav(<I.chat/>,'New chat',true,()=>{})}
+        {nav(<I.gear/>,'AI Settings',false,()=>{})}
+      </div>
+      <div style={{borderTop:`1px dashed ${C.line}`,margin:'12px 12px 0'}}/>
+      <div style={{padding:'10px 12px 0'}}>
+        {nav(<I.flow/>,'Automation',false,onAutomations,
+          <button onClick={onNew} title="New automation" style={{width:32,height:32,borderRadius:8,border:'none',
+            background:'transparent',cursor:'pointer',color:C.sub,display:'flex',alignItems:'center',
+            justifyContent:'center',fontSize:19,lineHeight:1,flexShrink:0}}
+            onMouseOver={e=>e.currentTarget.style.background='#F3F3F7'}
+            onMouseOut={e=>e.currentTarget.style.background='transparent'}>+</button>)}
+      </div>
+      <div style={{borderTop:`1px dashed ${C.line}`,margin:'12px 12px 0'}}/>
+
+      <div style={{flex:1,overflowY:'auto',padding:'10px 12px 12px'}}>
+        {head('My latest automations',latest,()=>setLatest(v=>!v))}
+        {latest && ['Checkout conversion boost','Checkout optimization','Homepage personalization','June Automated Experiments'].map(item)}
+        <div style={{height:10}}/>
+        {head('Pinned automations',pinned,()=>setPinned(v=>!v))}
+        {pinned && ['how can I update my setting','I want to know the segment build…'].map(item)}
+      </div>
+
+      <div style={{borderTop:`1px solid ${C.line}`}}>
+        <button style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'16px 18px',background:'none',
+          border:'none',cursor:'pointer',fontSize:14,color:C.ink}}>
+          <span style={{color:C.sub,display:'flex'}}><I.arrowLeft/></span>Back to app</button>
+        <button style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'16px 18px',background:'none',
+          border:'none',borderTop:`1px solid ${C.line}`,cursor:'pointer',fontSize:14,color:C.ink}}>
+          <span style={{color:C.sub,display:'flex'}}><I.panel/></span>Collapse</button>
+      </div>
+    </div>
+  );
+}
+
+function HomeScreen({onAutomations,onNew,onPrompt}){
+  const [text,setText]=useState('');
+  const send=()=>{const t=text.trim(); if(t) onPrompt(t);};
+  const chips=['Create a segment for returning users','Target mobile users only','Trigger on 50% scroll','Build a Workflows automation'];
+  return (
+    <div style={{flex:1,display:'flex',overflow:'hidden',background:'#fff'}}>
+      <HomeSidebar onAutomations={onAutomations} onNew={onNew}/>
+      <div style={{flex:1,overflowY:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:'40px 28px'}}>
+        <div style={{width:'100%',maxWidth:800}}>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:18,marginBottom:38}}>
+            <div style={{width:48,height:48,borderRadius:13,background:'#D7F64F',display:'flex',
+              alignItems:'center',justifyContent:'center'}}>
+              <svg width="26" height="26" viewBox="0 0 22 22" fill="none">
+                <rect x="1.5" y="1.5" width="8" height="8" rx="2.6" fill="#1B1B23"/>
+                <rect x="12.5" y="1.5" width="8" height="8" rx="2.6" fill="#1B1B23"/>
+                <rect x="1.5" y="12.5" width="8" height="8" rx="2.6" fill="#1B1B23"/>
+                <rect x="12.5" y="12.5" width="8" height="8" rx="2.6" fill="#1B1B23"/></svg>
+            </div>
+            <h1 className="mont" style={{fontSize:25,fontWeight:700,margin:0,letterSpacing:'-.01em'}}>
+              What are we optimizing?</h1>
+          </div>
+
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:11}}>
+            <span style={{border:`1px solid ${C.line}`,borderRadius:6,padding:'5px 11px',fontSize:13,
+              color:C.ink,background:'#fff'}}>/ agent</span>
+            <span style={{display:'inline-flex',alignItems:'center',gap:7,background:'#F1F1FE',borderRadius:7,
+              padding:'6px 12px'}}>
+              <span style={{color:C.indigo,display:'flex'}}><I.sparkle/></span>
+              <span style={{fontSize:13.5,fontWeight:600,color:C.indigo}}>{'{6}'} AI credits left</span>
+            </span>
+          </div>
+
+          <div style={{border:`1px solid ${C.line}`,borderRadius:9,padding:'16px 18px 12px',background:'#fff'}}>
+            <textarea value={text} onChange={e=>setText(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+              placeholder="Ask me anything, upload a design or sketch directly on the page"
+              style={{width:'100%',minHeight:56,border:'none',outline:'none',resize:'none',fontSize:14.5,
+                color:C.ink,lineHeight:1.5,background:'transparent'}}/>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8}}>
+              <button style={{width:34,height:34,border:`1px solid ${C.line}`,borderRadius:8,background:'#fff',
+                cursor:'pointer',color:C.sub,fontSize:19,lineHeight:1,display:'flex',alignItems:'center',
+                justifyContent:'center'}}>+</button>
+              <button disabled={!text.trim()} onClick={send} style={{width:34,height:34,borderRadius:'50%',border:'none',
+                background:text.trim()?C.indigo:'#F1F1F5',color:text.trim()?'#fff':'#B9B9C4',
+                cursor:text.trim()?'pointer':'default',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 13V3.5M3.8 7.4L8 3.2l4.2 4.2" stroke="currentColor" strokeWidth="1.6"
+                    strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
+          </div>
+          <p style={{fontSize:13,color:C.mute,margin:'12px 0 0'}}>
+            Our AI can make mistakes. Please double-check your responses.</p>
+
+          <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:12,marginTop:44}}>
+            {chips.map(c=>
+              <button key={c} onClick={c==='Build a Workflows automation'?onNew:undefined}
+                style={{border:`1px solid ${C.line}`,borderRadius:22,padding:'11px 20px',background:'#fff',
+                  cursor:'pointer',fontSize:13.5,color:C.ink}}
+                onMouseOver={e=>e.currentTarget.style.background='#F7F7FA'}
+                onMouseOut={e=>e.currentTarget.style.background='#fff'}>{c}</button>)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ SCREEN 1 — AUTOMATIONS LIST ═══════════════════ */
+function AutomationCard({a, selected, onSelect}){
+  const chipStyle = k => ({
+    action:{c:C.red,   bg:'#FDECEC', icon:<I.alert/>},
+    review:{c:C.green, bg:'#E7F7EF', icon:<I.check/>},
+    plan:  {c:C.red,   bg:'#FDECEC', icon:null},
+    busy:  {c:C.indigo,bg:'#EFEFFB', icon:<I.info/>},
+  }[k]);
+  return (
+    <div onClick={()=>onSelect(a)} style={{display:'flex',background:'#fff',
+      border:`1px solid ${selected?C.indigo:C.line}`,borderRadius:10,cursor:'pointer',overflow:'hidden',
+      boxShadow:selected?`0 0 0 1px ${C.indigo}`:'0 1px 2px rgba(20,20,40,.04)'}}>
+      <div style={{width:4,background:a.bar,flexShrink:0,margin:'14px 0 14px 14px',borderRadius:3,alignSelf:'stretch'}}/>
+      <div style={{flex:1,padding:'14px 16px',minWidth:0}}>
+        <div style={{fontSize:14,fontWeight:600,color:C.ink,marginBottom:3}}>{a.name}</div>
+        <div style={{fontSize:12.5,color:C.mute}}>
+          Created by <span style={{color:C.sub,fontWeight:500}}>{a.by}</span> · {a.ago}
+        </div>
+        {a.chips.length>0 &&
+          <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:9}}>
+            {a.chips.map((ch,i)=>{const s=chipStyle(ch.k);return(
+              <span key={i} style={{display:'inline-flex',alignItems:'center',gap:5,background:s.bg,color:s.c,
+                fontSize:11.5,padding:'4px 9px',borderRadius:5}}>
+                {s.icon && <span style={{display:'flex'}}>{s.icon}</span>}{ch.t}</span>);})}
+          </div>}
+      </div>
+      <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',alignItems:'flex-end',gap:5,flexShrink:0}}>
+        <StatusBadge s={a.status}/>
+        {a.when && <span style={{fontSize:11.5,color:C.mute}}>{a.when}</span>}
+        {a.repeats && <span style={{fontSize:11.5,color:C.mute,display:'inline-flex',alignItems:'center',gap:5}}>
+          <I.repeat/>{a.repeats}</span>}
+      </div>
+    </div>
+  );
+}
+
+function AutomationsList({automations,selectedId,onSelect,onNew}){
+  const [q,setQ]=useState(''); const [view,setView]=useState('list'); const [filter,setFilter]=useState('all');
+  const counts = Object.fromEntries(FILTER_ORDER.map(s=>[s,automations.filter(a=>a.status===s).length]));
+  const rows = automations.filter(a=>a.name.toLowerCase().includes(q.toLowerCase()))
+                          .filter(a=>filter==='all'||a.status===filter);
+  const tab=(key,label,count)=>{
+    const on=filter===key;
+    return <button key={key} onClick={()=>setFilter(key)} style={{display:'inline-flex',alignItems:'center',gap:7,
+      padding:'7px 12px',borderRadius:7,border:'none',cursor:'pointer',background:on?'#EFEFFB':'transparent',
+      color:on?C.indigo:C.sub,fontSize:12.5,fontWeight:on?600:400,whiteSpace:'nowrap'}}>
+      {label}
+      {count!=null && <span style={{background:key==='action_required'&&count>0?C.red:'#EDEDF1',
+        color:key==='action_required'&&count>0?'#fff':C.sub,fontSize:10.5,fontWeight:600,minWidth:18,height:18,
+        borderRadius:9,display:'inline-flex',alignItems:'center',justifyContent:'center',padding:'0 5px'}}>{count}</span>}
+    </button>;
+  };
+  return (
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflowY:'auto',minWidth:540,background:'#fff'}}>
+      <div style={{padding:'26px 30px 0'}}>
+        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:20,marginBottom:20}}>
+          <div>
+            <h1 className="mont" style={{fontSize:26,fontWeight:600,margin:0,letterSpacing:'-.01em'}}>Automations</h1>
+            <p style={{fontSize:13.5,color:C.mute,margin:'5px 0 0'}}>Create automated tasks that run on their own</p>
+          </div>
+          <Btn kind="primary" onClick={onNew} style={{padding:'10px 18px',fontSize:12.5}}>
+            <span style={{fontSize:15,lineHeight:1}}>+</span>NEW</Btn>
+        </div>
+        <div style={{display:'flex',gap:12,marginBottom:16}}>
+          <div style={{flex:1,display:'flex',alignItems:'center',gap:9,border:`1px solid ${C.line}`,borderRadius:8,
+            padding:'9px 13px',minWidth:0}}>
+            <span style={{color:C.faint,display:'flex'}}><I.search/></span>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search automations"
+              style={{flex:1,border:'none',outline:'none',fontSize:13,color:C.ink,minWidth:0}}/>
+          </div>
+          <div style={{display:'flex',border:`1px solid ${C.line}`,borderRadius:8,padding:3,gap:2}}>
+            {[['list','List',<I.list/>],['kanban','Kanban',<I.kanban/>]].map(([v,l,ic])=>
+              <button key={v} onClick={()=>setView(v)} style={{display:'inline-flex',alignItems:'center',gap:7,
+                padding:'6px 14px',borderRadius:6,border:'none',cursor:'pointer',
+                background:view===v?'#EFEFFB':'transparent',color:view===v?C.indigo:C.sub,fontSize:13,fontWeight:500}}>
+                {ic}{l}</button>)}
+          </div>
+          <button style={{width:42,border:`1px solid ${C.line}`,borderRadius:8,background:'#fff',cursor:'pointer',
+            color:C.sub,display:'flex',alignItems:'center',justifyContent:'center'}}><I.filter/></button>
+        </div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:2,marginBottom:18}}>
+          {tab('all','All',null)}
+          {FILTER_ORDER.map(s=>tab(s,STATUS[s].label,counts[s]))}
+        </div>
+      </div>
+      <div style={{padding:'0 30px 30px',display:'flex',flexDirection:'column',gap:12}}>
+        {rows.length===0
+          ? <div style={{padding:'60px 0',textAlign:'center',color:C.mute,fontSize:13.5}}>No automations here.</div>
+          : view==='list'
+            ? rows.map(a=><AutomationCard key={a.id} a={a} selected={selectedId===a.id} onSelect={onSelect}/>)
+            : <div style={{display:'flex',gap:14,overflowX:'auto',paddingBottom:8}}>
+                {FILTER_ORDER.map(s=>{
+                  const col=rows.filter(a=>a.status===s);
+                  return <div key={s} style={{minWidth:250,flex:'1 0 250px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                      <span style={{width:7,height:7,borderRadius:'50%',background:STATUS[s].dot}}/>
+                      <span style={{fontSize:12.5,fontWeight:500}}>{STATUS[s].label}</span>
+                      <span style={{fontSize:12,color:C.mute}}>{col.length}</span>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                      {col.map(a=><AutomationCard key={a.id} a={a} selected={selectedId===a.id} onSelect={onSelect}/>)}
+                    </div>
+                  </div>;})}
+              </div>}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ DETAIL PANEL ═══════════════════ */
+function OverflowMenu({action,onActivity,onClose}){
+  const label={pause:['Pause automation',<I.pause/>],run:['Run automation',<I.play/>],repeat:['Repeat automation',<I.repeat/>]}[action];
+  const row=(icon,text,danger,onClick)=>(
+    <button onClick={onClick} style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',
+      background:'none',border:'none',cursor:'pointer',fontSize:12.5,color:danger?C.red:C.ink,textAlign:'left'}}
+      onMouseOver={e=>e.currentTarget.style.background='#F6F6F9'}
+      onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+      <span style={{display:'flex',color:danger?C.red:C.sub}}>{icon}</span>{text}</button>);
+  return (
+    <>
+      <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:40}}/>
+      <div className="fade" style={{position:'absolute',top:'calc(100% + 6px)',right:0,width:206,background:'#fff',
+        border:`1px solid ${C.line}`,borderRadius:9,boxShadow:'0 8px 24px rgba(20,20,40,.12)',zIndex:41,
+        padding:'5px 0',overflow:'hidden'}}>
+        {row(<I.copy/>,'Duplicate automation',false,onClose)}
+        {row(label[1],label[0],false,onClose)}
+        {row(<I.history/>,'View activity log',false,()=>{onClose();onActivity();})}
+        {row(<I.trash/>,'Delete automation',true,onClose)}
+      </div>
+    </>
+  );
+}
+
+function ActivityLog({onClose}){
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(18,18,30,.32)',display:'flex',alignItems:'center',
+      justifyContent:'center',zIndex:60}} onClick={onClose}>
+      <div className="fade" onClick={e=>e.stopPropagation()} style={{width:430,maxHeight:'76vh',background:'#fff',
+        borderRadius:12,boxShadow:'0 20px 48px rgba(20,20,40,.2)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'18px 20px',borderBottom:`1px solid ${C.line}`}}>
+          <span style={{color:C.sub,display:'flex'}}><I.history/></span>
+          <span className="mont" style={{fontSize:16,fontWeight:600,flex:1}}>Activity log</span>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:C.mute,display:'flex'}}><I.close/></button>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
+          {ACTIVITY.map((e,i)=>
+            <div key={i} style={{display:'flex',gap:12,paddingBottom:i===ACTIVITY.length-1?0:18}}>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'center',flexShrink:0,paddingTop:4}}>
+                <span style={{width:9,height:9,borderRadius:'50%',background:e.c}}/>
+                {i<ACTIVITY.length-1 && <span style={{flex:1,width:1,background:C.line,marginTop:4,minHeight:26}}/>}
+              </div>
+              <div>
+                <div style={{fontSize:13,fontWeight:500,color:C.ink}}>{e.t}</div>
+                <div style={{fontSize:12,color:C.mute,marginTop:2}}>{e.d}</div>
+              </div>
+            </div>)}
+        </div>
+        <div style={{padding:'14px 20px',borderTop:`1px solid ${C.line}`,display:'flex',justifyContent:'flex-end'}}>
+          <Btn kind="primary" onClick={onClose}>CLOSE</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssetRow({a, onReview, syncedMode}){
+  const done = a.state==='reviewed' || syncedMode;
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderBottom:`1px solid ${C.lineSoft}`}}>
+      <Pill label={a.pill} dot={a.dot}/>
+      <span style={{flex:1,fontSize:12.5,color:C.ink,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name}</span>
+      {done && <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:11.5,color:C.mute,flexShrink:0}}>
+        <span style={{color:C.green,display:'flex'}}><I.check/></span>{syncedMode?'Reviewed':'Approved'}</span>}
+      {done
+        ? <Btn kind="ghost" sm onClick={onReview}>View</Btn>
+        : <Btn kind="primary" sm onClick={onReview}>Review</Btn>}
+    </div>
+  );
+}
+
+function DetailPanel({a, onClose, onOpen, onAnswer, onReviewAsset, onSync}){
+  const [menu,setMenu]=useState(false); const [log,setLog]=useState(false);
+  const [openSec,setOpenSec]=useState({ar:true,fr:false,ip:false,assets:true});
+  const tog=k=>setOpenSec(s=>({...s,[k]:!s[k]}));
+  const isReview = a.status==='review_results';
+  const isSynced = a.status==='synced';
+  const assets = (isReview||isSynced) ? (a.forReview||[]) : [];
+  const reviewedCount = assets.filter(x=>x.state==='reviewed').length;
+  const remaining = assets.length-reviewedCount;
+  const allReviewed = assets.length>0 && remaining===0;
+
+  return (
+    <div className="fade" style={{width:430,borderLeft:`1px solid ${C.line}`,background:'#fff',display:'flex',
+      flexDirection:'column',flexShrink:0,overflowY:'auto'}}>
+      <div style={{padding:'16px 20px 0'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,position:'relative'}}>
+          <Btn kind="ghost" sm onClick={onOpen} style={{marginLeft:'auto'}}><I.pencil/>OPEN AUTOMATION</Btn>
+          <div style={{position:'relative'}}>
+            <button onClick={()=>setMenu(m=>!m)} style={{width:30,height:28,border:`1px solid ${C.line}`,borderRadius:6,
+              background:'#fff',cursor:'pointer',color:C.sub,display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <I.kebab/></button>
+            {menu && <OverflowMenu action={a.menuAction} onClose={()=>setMenu(false)} onActivity={()=>setLog(true)}/>}
+          </div>
+          <button onClick={onClose} style={{width:30,height:28,border:`1px solid ${C.line}`,borderRadius:6,
+            background:'#fff',cursor:'pointer',color:C.sub,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <I.close/></button>
+        </div>
+        <div style={{marginBottom:6}}><StatusBadge s={a.status}/></div>
+        <h2 className="mont" style={{fontSize:19,fontWeight:600,margin:'0 0 4px'}}>{a.name}</h2>
+        <div style={{fontSize:12.5,color:C.mute,marginBottom:18}}>
+          Created by <span style={{color:C.sub,fontWeight:500}}>{a.by}</span> · {a.ago}</div>
+
+        <div style={{fontSize:13,fontWeight:600,color:C.ink,marginBottom:6}}>Description</div>
+        <p style={{fontSize:13,color:C.sub,lineHeight:1.55,margin:'0 0 4px'}}>{a.desc}</p>
+        <button style={{background:'none',border:'none',padding:0,cursor:'pointer',fontSize:13,fontWeight:500,color:C.indigo}}>Show more</button>
+
+        {a.progress &&
+          <div style={{marginTop:20,paddingTop:18,borderTop:`1px solid ${C.lineSoft}`}}>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Progress</div>
+            <div style={{fontSize:12,color:C.mute}}>Task {a.progress.done} of {a.progress.total}</div>
+            <div style={{fontSize:13,fontWeight:600,color:C.ink,marginTop:3}}>Currently: {a.progress.current}</div>
+            <SegBar done={a.progress.done} total={a.progress.total}/>
+          </div>}
+      </div>
+
+      <div style={{padding:'20px',display:'flex',flexDirection:'column',gap:11}}>
+        {isReview &&
+          <div style={{background:'#F2F3FE',border:'1px solid #DEDFFA',borderRadius:10,padding:'14px 16px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7}}>
+              <span style={{color:C.indigo,display:'flex'}}><I.info/></span>
+              <span style={{fontSize:12,fontWeight:700,letterSpacing:'.04em',color:C.indigo}}>REVIEW ASSETS &amp; SYNC TO DASHBOARDS</span>
+            </div>
+            <p style={{fontSize:12.5,color:'#4A4A8A',lineHeight:1.55,margin:0}}>
+              Your automation has completed all tasks. You must review and approve all assets in order to sync them to your dashboards and use them in campaigns.
+            </p>
+          </div>}
+
+        {(isReview||isSynced) &&
+          <Section
+            icon={<I.check/>} iconColor={C.green}
+            title={isSynced?'Synced to dashboards':'For review'}
+            badge={isSynced?'All assets synced':`${remaining} assets ready for review`}
+            badgeBg={isSynced?'#E7F7EF':'#EFEFFB'} badgeColor={isSynced?C.green:C.indigo}
+            open={openSec.assets} onToggle={()=>tog('assets')}>
+            <div style={{border:`1px solid ${C.lineSoft}`,borderRadius:8,overflow:'hidden'}}>
+              {assets.map(x=><AssetRow key={x.id} a={x} syncedMode={isSynced} onReview={()=>onReviewAsset(a,x)}/>)}
+            </div>
+          </Section>}
+
+        {isReview &&
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12.5,color:C.sub,marginBottom:8}}>
+              {reviewedCount} of {assets.length} assets reviewed
+              <span style={{color:C.faint,display:'flex'}}><I.info/></span>
+            </div>
+            <div style={{height:5,borderRadius:3,background:'#EDEDF1',overflow:'hidden',marginBottom:7}}>
+              <div style={{height:'100%',width:`${reviewedCount/assets.length*100}%`,background:C.indigo,borderRadius:3}}/>
+            </div>
+            <div style={{fontSize:12,color:C.mute,marginBottom:16}}>{remaining} assets remaining</div>
+            <Btn kind="primary" disabled={!allReviewed} onClick={()=>onSync&&onSync(a)}
+              style={{width:'100%',padding:'12px'}}>SYNC ASSETS TO DASHBOARDS</Btn>
+            <p style={{fontSize:11.5,color:C.mute,textAlign:'center',margin:'10px 0 0',lineHeight:1.5}}>
+              All assets must be reviewed in order to approve and sync. {remaining} remaining.</p>
+          </div>}
+
+        {isSynced &&
+          <div>
+            <Btn kind="primary" disabled style={{width:'100%',padding:'12px'}}>
+              <I.check/>ASSETS SYNCED TO DASHBOARDS</Btn>
+            <p style={{fontSize:11.5,color:C.mute,textAlign:'center',margin:'10px 0 0',lineHeight:1.5}}>
+              All assets synced to dashboards. You may now use them in campaigns.</p>
+          </div>}
+
+        {openActions(a).length>0 &&
+          <Section icon={<I.alert/>} iconColor={C.red} title="Action required"
+            badge={`${openActions(a).length} tasks`} badgeBg={C.red} badgeColor="#fff"
+            open={openSec.ar} onToggle={()=>tog('ar')} danger>
+            <div style={{display:'flex',flexDirection:'column',gap:9}}>
+              {openActions(a).map(t=>
+                <div key={t.id} style={{display:'flex',alignItems:'center',gap:12,background:'#FAFAFC',
+                  border:`1px solid ${C.lineSoft}`,borderRadius:8,padding:'11px 13px'}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:500,color:C.ink,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.title}</div>
+                    <div style={{fontSize:11.5,color:C.mute,marginTop:2}}>{t.meta}</div>
+                  </div>
+                  <Btn kind="outline" sm onClick={()=>onAnswer(a,t)}>Answer</Btn>
+                </div>)}
+            </div>
+          </Section>}
+
+        {!isReview && !isSynced && a.forReview.length>0 &&
+          <Section icon={<I.check/>} iconColor={C.green} title="For review"
+            badge={`${a.forReview.length} assets`} badgeBg={C.green} badgeColor="#fff"
+            open={openSec.fr} onToggle={()=>tog('fr')}>
+            <div style={{border:`1px solid ${C.lineSoft}`,borderRadius:8,overflow:'hidden'}}>
+              {a.forReview.map(x=>{const done=x.state==='reviewed';return(
+                <div key={x.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
+                  borderBottom:`1px solid ${C.lineSoft}`}}>
+                  <Pill label={x.pill} dot={x.dot}/>
+                  <span style={{flex:1,fontSize:12.5,color:C.ink,minWidth:0}}>{x.name}</span>
+                  {done &&
+                    <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:11.5,color:C.mute}}>
+                      <span style={{color:C.green,display:'flex'}}><I.check/></span>Reviewed</span>}
+                  {done
+                    ? <Btn kind="ghost" sm onClick={()=>onReviewAsset(a,x)}>View</Btn>
+                    : <Btn kind="primary" sm onClick={()=>onReviewAsset(a,x)}>Review</Btn>}
+                </div>);})}
+            </div>
+          </Section>}
+
+        {a.inProgress.length>0 &&
+          <Section icon={<I.info/>} iconColor={C.indigo} title="In-progress"
+            badge={`${a.inProgress.length} tasks`} badgeBg={C.indigo} badgeColor="#fff"
+            open={openSec.ip} onToggle={()=>tog('ip')}>
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              {a.inProgress.map(t=>
+                <div key={t.id} style={{display:'flex',alignItems:'center',gap:12}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:10}}>
+                      <span style={{fontSize:13,color:C.ink}}>{t.name}</span>
+                      <span style={{fontSize:11.5,color:C.mute,fontVariantNumeric:'tabular-nums'}}>{t.pct}%</span>
+                    </div>
+                    <div style={{height:4,borderRadius:3,background:'#EDEDF1',marginTop:6,overflow:'hidden'}}>
+                      <div style={{height:'100%',width:`${t.pct}%`,background:C.indigo,borderRadius:3}}/>
+                    </div>
+                  </div>
+                  <Btn kind="ghost" sm>View</Btn>
+                </div>)}
+            </div>
+          </Section>}
+      </div>
+      {log && <ActivityLog onClose={()=>setLog(false)}/>}
+    </div>
+  );
+}
+
+/* ═══════════════════ SCREEN 2 — NEW AUTOMATION ═══════════════════ */
+function SchedulePopover({onApply,onCancel}){
+  const days=['Mo','Tu','We','Th','Fr','Sa','Su'];
+  const grid=[[29,30,31,1,2,3,4],[5,6,7,8,9,10,11],[12,13,14,15,16,17,18],[19,20,21,22,23,24,25],[26,27,28,29,30,31,1]];
+  const [sel,setSel]=useState(9);
+  return (
+    <div className="fade" style={{position:'absolute',top:-330,right:0,width:300,background:'#fff',
+      border:`1px solid ${C.line}`,borderRadius:11,boxShadow:'0 14px 38px rgba(20,20,40,.16)',zIndex:50,overflow:'hidden'}}>
+      <div style={{padding:'15px 17px',borderBottom:`1px solid ${C.lineSoft}`}}>
+        <div style={{display:'flex',alignItems:'center',gap:9}}>
+          <span style={{color:C.sub,display:'flex'}}><I.calendar/></span>
+          <span style={{fontSize:14,fontWeight:600}}>Schedule your automation</span>
+        </div>
+        <p style={{fontSize:12,color:C.mute,margin:'5px 0 0'}}>Pick a date and time for your automation to run</p>
+      </div>
+      <div style={{padding:'14px 17px'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+          <span style={{fontSize:12,color:C.sub,cursor:'pointer'}}>‹ ›</span>
+          <span style={{fontSize:13,fontWeight:500}}>August 2026</span>
+          <span style={{fontSize:12,color:C.sub,cursor:'pointer'}}>‹ ›</span>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:4}}>
+          {days.map(d=><div key={d} style={{textAlign:'center',fontSize:11,color:C.mute,padding:'4px 0'}}>{d}</div>)}
+        </div>
+        {grid.map((row,ri)=>
+          <div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2}}>
+            {row.map((d,di)=>{
+              const dim=(ri===0&&d>20)||(ri===4&&d===1);
+              const on=!dim&&d===sel;
+              return <button key={di} onClick={()=>!dim&&setSel(d)} style={{padding:'6px 0',border:'none',borderRadius:5,
+                background:on?C.indigo:'transparent',color:on?'#fff':dim?'#D0D0D8':C.ink,fontSize:12,
+                cursor:dim?'default':'pointer'}}>{d}</button>;})}
+          </div>)}
+        <input placeholder="00:00:00" style={{width:'100%',marginTop:12,padding:'9px 11px',border:`1px solid ${C.line}`,
+          borderRadius:7,fontSize:12.5,outline:'none'}}/>
+        <select style={{width:'100%',marginTop:8,padding:'9px 11px',border:`1px solid ${C.line}`,borderRadius:7,
+          fontSize:12.5,outline:'none',background:'#fff',color:C.sub}}><option>Paris GMT+2</option></select>
+      </div>
+      <div style={{padding:'12px 17px',borderTop:`1px solid ${C.lineSoft}`,display:'flex',justifyContent:'flex-end',gap:9}}>
+        <button onClick={onCancel} style={{background:'none',border:'none',cursor:'pointer',fontSize:12.5,color:C.sub,padding:'8px 4px'}}>Cancel</button>
+        <Btn kind="primary" onClick={()=>onApply(`August ${sel}, 2026 at 8:30am`)}>APPLY</Btn>
+      </div>
+    </div>
+  );
+}
+
+function NewAutomation({onCancel,onBuild}){
+  const [name,setName]=useState(''); const [project,setProject]=useState('');
+  const [desc,setDesc]=useState(''); const [when,setWhen]=useState(null);
+  const [schedule,setSchedule]=useState(null); const [showCal,setShowCal]=useState(false);
+  const [repeat,setRepeat]=useState(false); const [freq,setFreq]=useState('Daily');
+  const [errors,setErrors]=useState({});
+  const MAX=200;
+
+  function build(){
+    const e={};
+    if(!name.trim()) e.name='Provide a name for your automation to continue.';
+    if(!desc.trim()) e.desc='Describe the goal of your automation to continue.';
+    if(!when)        e.when='Select when you want to start the automation to continue.';
+    setErrors(e);
+    if(Object.keys(e).length===0) onBuild({name,desc,when,schedule,repeat:repeat?freq:null});
+  }
+
+  const label=t=><label style={{display:'block',fontSize:13,fontWeight:500,color:C.ink,marginBottom:7}}>{t}</label>;
+  const err=t=><div style={{fontSize:11.5,color:C.red,marginTop:6}}>{t}</div>;
+
+  return (
+    <div style={{flex:1,display:'flex',overflow:'hidden',minWidth:0,background:'#fff'}}>
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+        <div style={{padding:'18px 22px'}}>
+          <Btn kind="ghost" sm onClick={onCancel}><I.arrowLeft/>BACK TO AUTOMATIONS</Btn>
+        </div>
+        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:24}}>
+          <div className="pulse" style={{width:190,height:52,background:'#fff',border:`1px solid ${C.lineSoft}`,
+            borderRadius:9,display:'flex',alignItems:'center',gap:10,padding:'0 12px'}}>
+            <div style={{width:28,height:28,borderRadius:7,background:'#F0F0F4'}}/>
+            <div style={{flex:1}}>
+              <div style={{height:7,background:'#F0F0F4',borderRadius:4,marginBottom:6,width:'80%'}}/>
+              <div style={{height:7,background:'#F5F5F8',borderRadius:4,width:'55%'}}/>
+            </div>
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:14.5,fontWeight:600,color:C.ink,marginBottom:6}}>New automation</div>
+            <p style={{fontSize:12.5,color:C.mute,margin:0,maxWidth:300,lineHeight:1.55}}>
+              Configure your automation by completing all fields in the panel to the right.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{width:430,borderLeft:`1px solid ${C.line}`,background:'#fff',display:'flex',flexDirection:'column',flexShrink:0}}>
+        <div style={{flex:1,overflowY:'auto',padding:'20px 22px'}}>
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:20}}>
+            <div>
+              <h2 className="mont" style={{fontSize:18,fontWeight:600,margin:'0 0 3px'}}>New automation</h2>
+              <div style={{fontSize:12,color:C.mute}}>Created by <span style={{color:C.sub,fontWeight:500}}>Paul Tremblay</span> · Now</div>
+            </div>
+            <button onClick={onCancel} style={{width:28,height:28,border:`1px solid ${C.line}`,borderRadius:6,
+              background:'#fff',cursor:'pointer',color:C.sub,display:'flex',alignItems:'center',justifyContent:'center'}}><I.close/></button>
+          </div>
+          <div style={{borderTop:`1px solid ${C.lineSoft}`,paddingTop:18}}/>
+
+          {label('Automation name')}
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Checkout conversion boost"
+            style={{width:'100%',padding:'10px 13px',border:`1px solid ${errors.name?C.red:C.line}`,borderRadius:7,
+              fontSize:13,outline:'none',marginBottom:errors.name?0:18}}/>
+          {errors.name && err(errors.name)}
+          {errors.name && <div style={{height:18}}/>}
+
+          {label('Project')}
+          <select value={project} onChange={e=>setProject(e.target.value)}
+            style={{width:'100%',padding:'10px 13px',border:`1px solid ${C.line}`,borderRadius:7,fontSize:13,
+              outline:'none',background:'#fff',color:project?C.ink:C.faint,marginBottom:18}}>
+            <option value="">Select a project</option>
+            <option>Acme Inc.</option><option>Acme Store EU</option>
+          </select>
+
+          <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginBottom:7}}>
+            <span style={{fontSize:13,fontWeight:500,display:'inline-flex',alignItems:'center',gap:6}}>
+              Description for AI <span style={{color:C.faint,fontSize:11,border:`1px solid ${C.line}`,
+                borderRadius:'50%',width:14,height:14,display:'inline-flex',alignItems:'center',justifyContent:'center'}}>?</span>
+            </span>
+            <span style={{fontSize:11.5,color:C.mute,fontVariantNumeric:'tabular-nums'}}>{desc.length}/{MAX}</span>
+          </div>
+          <textarea value={desc} maxLength={MAX} onChange={e=>setDesc(e.target.value)}
+            placeholder="e.g. build and test two variations of my checkout page designed to increase conversions, and modify traffic allocation to the winning variation over a fixed time period"
+            style={{width:'100%',minHeight:104,padding:'11px 13px',border:`1px solid ${errors.desc?C.red:C.line}`,
+              borderRadius:7,fontSize:12.5,outline:'none',resize:'vertical',lineHeight:1.5}}/>
+          {errors.desc && err(errors.desc)}
+
+          <div style={{fontSize:10.5,letterSpacing:'.08em',color:C.faint,margin:'16px 0 9px'}}>QUICK PROMPTS</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            {QUICK_PROMPTS.map(p=>
+              <button key={p} onClick={()=>setDesc(d=>d||p)} style={{display:'inline-flex',alignItems:'center',gap:6,
+                padding:'7px 12px',border:`1px solid ${C.line}`,borderRadius:7,background:'#fff',cursor:'pointer',
+                fontSize:12,color:C.sub}}>+ {p}</button>)}
+          </div>
+
+          <div style={{borderTop:`1px solid ${C.lineSoft}`,margin:'20px 0 18px'}}/>
+          {label('When would you like to run this automation?')}
+          <div style={{display:'flex',gap:10,position:'relative'}}>
+            {[{k:'now',t:'As soon as approved',s:'Run once you approve the plan',ic:<I.rocket/>},
+              {k:'later',t:'Later',s:schedule||'Pick a date and time',ic:<I.calendar/>}].map(o=>
+              <button key={o.k} onClick={()=>{setWhen(o.k); if(o.k==='later') setShowCal(true);}}
+                style={{flex:1,display:'flex',alignItems:'center',gap:10,padding:'11px 12px',textAlign:'left',
+                  borderRadius:8,cursor:'pointer',background:when===o.k?'#F5F5FE':'#fff',
+                  border:`1px solid ${when===o.k?C.indigo:errors.when?C.red:C.line}`}}>
+                <span style={{color:when===o.k?C.indigo:C.faint,display:'flex',flexShrink:0}}>{o.ic}</span>
+                <span style={{minWidth:0}}>
+                  <span style={{display:'block',fontSize:12.5,fontWeight:500,color:when===o.k?C.indigo:C.ink}}>{o.t}</span>
+                  <span style={{display:'block',fontSize:11,color:when===o.k?C.indigo:C.mute,overflow:'hidden',
+                    textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.s}</span>
+                </span>
+              </button>)}
+            {showCal && <SchedulePopover onCancel={()=>setShowCal(false)}
+              onApply={v=>{setSchedule(v);setShowCal(false);}}/>}
+          </div>
+          {errors.when && err(errors.when)}
+
+          <div style={{display:'flex',alignItems:'flex-start',gap:11,marginTop:20}}>
+            <button onClick={()=>setRepeat(r=>!r)} style={{width:34,height:19,borderRadius:11,border:'none',
+              cursor:'pointer',background:repeat?C.indigo:'#D6D6DE',position:'relative',flexShrink:0,marginTop:1}}>
+              <span style={{position:'absolute',top:2,left:repeat?17:2,width:15,height:15,borderRadius:'50%',
+                background:'#fff',transition:'left .15s'}}/>
+            </button>
+            <div>
+              <div style={{fontSize:13,fontWeight:500}}>Repeat automation</div>
+              <div style={{fontSize:11.5,color:C.mute,marginTop:2}}>Run the automation at a regular interval</div>
+              {repeat &&
+                <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:10}}>
+                  {['Daily','Weekly','Weekdays','Monthly','Yearly'].map(f=>
+                    <button key={f} onClick={()=>setFreq(f)} style={{padding:'5px 11px',borderRadius:6,border:'none',
+                      cursor:'pointer',background:freq===f?'#EFEFFB':'transparent',color:freq===f?C.indigo:C.sub,
+                      fontSize:12,fontWeight:freq===f?600:400}}>{f}</button>)}
+                </div>}
+            </div>
+          </div>
+        </div>
+        <div style={{borderTop:`1px solid ${C.line}`,padding:'14px 22px',display:'flex',justifyContent:'flex-end',gap:10}}>
+          <Btn kind="ghost" onClick={onCancel}>CANCEL</Btn>
+          <Btn kind="primary" onClick={build}>BUILD <I.arrowRight/></Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ SCREEN 3 — CANVAS (full screen) ═══════════════════ */
+function CanvasHeader({title,status,onExit,hint}){
+  return (
+    <div style={{height:58,borderBottom:`1px solid ${C.line}`,display:'flex',alignItems:'center',flexShrink:0,background:'#fff'}}>
+      <button onClick={onExit} title="Back to automations"
+        style={{width:72,height:'100%',borderRight:`1px solid ${C.line}`,display:'flex',alignItems:'center',
+        justifyContent:'center',gap:5,background:'none',border:'none',borderRight:`1px solid ${C.line}`,cursor:'pointer'}}>
+        <I.logo/><span style={{color:C.sub,display:'flex'}}><I.chevDown/></span>
+      </button>
+      <div style={{display:'flex',alignItems:'center',gap:12,padding:'0 22px'}}>
+        <span className="mont" style={{fontSize:15,fontWeight:600}}>{title}</span>
+        {status && <StatusBadge s={status}/>}
+        <DemoHint step={hint}/>
+      </div>
+    </div>
+  );
+}
+
+function ThreadPrompt({text}){
+  return <div style={{background:'#F3F3FE',border:'1px solid #DEDEFA',borderRadius:9,padding:'12px 14px',
+    fontSize:12.5,color:C.ink,lineHeight:1.55}}>{text}</div>;
+}
+function ThreadCollapsed({text}){
+  return <div style={{display:'flex',alignItems:'center',gap:9,background:'#FAFAFC',border:`1px solid ${C.line}`,
+    borderRadius:8,padding:'10px 13px'}}>
+    <span style={{color:C.faint,display:'flex'}}><I.chevRight/></span>
+    <span style={{fontSize:12.5,color:C.sub}}>{text}</span></div>;
+}
+function ThreadLoading({title,sub}){
+  return <div style={{display:'flex',alignItems:'center',gap:12,border:`1px solid ${C.line}`,borderRadius:9,padding:'13px 15px'}}>
+    <span className="spin" style={{width:19,height:19,borderRadius:'50%',border:`2px solid #E4E4EA`,
+      borderTopColor:C.indigo,flexShrink:0}}/>
+    <div><div style={{fontSize:12.5,fontWeight:600,color:C.ink}}>{title}</div>
+      <div style={{fontSize:11.5,color:C.mute,marginTop:2}}>{sub}</div></div>
+  </div>;
+}
+function ThreadCard({title,children}){
+  return <div style={{border:`1px solid ${C.line}`,borderRadius:9,overflow:'hidden'}}>
+    <div style={{display:'flex',alignItems:'center',gap:9,padding:'11px 13px',background:'#FAFAFC',
+      borderBottom:`1px solid ${C.lineSoft}`}}>
+      <span style={{color:C.amber,display:'flex'}}><I.pencil/></span>
+      <span style={{fontSize:12.5,fontWeight:600,color:C.ink}}>{title}</span></div>
+    <div style={{padding:'13px 15px'}}>{children}</div></div>;
+}
+
+function CreationThread({draft,phase,answers,setAnswers,onApprove,onRefine,onBack}){
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:11}}>
+      <ThreadPrompt text={draft.desc}/>
+
+      {phase==='analyzing' &&
+        <ThreadLoading title="Analyzing your automation request…" sub="Configuring the ideal list of tasks for your needs"/>}
+
+      {phase==='clarify' &&
+        <ThreadCard title="Action required: Automation details needed">
+          {CLARIFY.map((q,qi)=>
+            <div key={q.k} style={{marginBottom:qi===CLARIFY.length-1?0:15}}>
+              <div style={{fontSize:12.5,color:C.sub,marginBottom:8}}>{q.q}</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:7}}>
+                {q.opts.map(o=>{const on=answers[q.k]===o;
+                  return <button key={o} onClick={()=>setAnswers(a=>({...a,[q.k]:o}))}
+                    style={{padding:'6px 12px',borderRadius:6,cursor:'pointer',fontSize:12,
+                      background:on?'#F5F5FE':'#fff',color:on?C.indigo:C.sub,fontWeight:on?600:400,
+                      border:`1px solid ${on?C.indigo:C.line}`}}>{o}</button>;})}
+              </div>
+            </div>)}
+        </ThreadCard>}
+
+      {(phase==='planning'||phase==='approve'||phase==='done') &&
+        <ThreadCollapsed text="Action required: Automation details needed"/>}
+
+      {phase==='planning' && <>
+        <ThreadLoading title="Generating an automation plan" sub="Configuring the ideal list of tasks for your needs"/>
+        <div style={{display:'flex',gap:10,border:`1px solid ${C.line}`,borderRadius:9,padding:'12px 14px',background:'#FBFBFD'}}>
+          <span style={{color:C.indigo,display:'flex',flexShrink:0,marginTop:2}}><I.sparkle/></span>
+          <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:0}}>
+            Thanks — that’s everything I need for now. This can take a few minutes, so feel free to head
+            back to the dashboard. I’ll let you know there as soon as the plan is ready for your approval.</p>
+        </div>
+      </>}
+
+      {(phase==='approve'||phase==='done') &&
+        <div style={{border:`1px solid ${C.line}`,borderRadius:9,overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',gap:9,padding:'10px 13px',borderBottom:`1px solid ${C.lineSoft}`}}>
+            <span style={{color:C.sub,display:'flex'}}><I.bulb/></span>
+            <span style={{fontSize:12.5,color:C.sub}}>Thought for 11 seconds</span></div>
+          <div style={{display:'flex',alignItems:'center',gap:9,padding:'10px 13px'}}>
+            <span style={{color:C.sub,display:'flex'}}><I.search/></span>
+            <span style={{fontSize:12.5,color:C.sub}}>Prepared automation plan for 1minute 27 seconds</span></div>
+        </div>}
+
+      {phase==='approve' &&
+        <ThreadCard title="Action required: Approve automation plan">
+          <div style={{marginBottom:11}}><StatusBadge s="awaiting_approval"/></div>
+          <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:'0 0 10px'}}>
+            An automation plan has been configured based on your request. Please review all details and approve or refine.</p>
+          <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:'0 0 10px'}}>
+            If you approve, your automation will go live {draft.when==='later'?'at the date and time you’ve scheduled it for':'immediately'}.</p>
+          <p style={{fontSize:12.5,color:C.ink,lineHeight:1.6,margin:'0 0 14px'}}>
+            <strong>Attention:</strong> An automation cannot be edited once live.</p>
+          <div style={{display:'flex',justifyContent:'flex-end',gap:9}}>
+            <Btn kind="ghost" onClick={onRefine}><I.repeat/>REFINE</Btn>
+            <Btn kind="outline" onClick={onApprove}><I.check/>APPROVE</Btn>
+          </div>
+        </ThreadCard>}
+
+      {phase==='done' &&
+        <>
+          <ThreadCollapsed text="Action required: Approve automation plan"/>
+          <div style={{border:`1px solid ${C.line}`,borderRadius:9,padding:'14px 15px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:9}}>
+              <span style={{color:C.green,display:'flex'}}><I.check/></span>
+              <span style={{fontSize:12.5,fontWeight:600,flex:1}}>Your automation has been approved</span>
+              <StatusBadge s={draft.when==='later'?'scheduled':'running'}/>
+            </div>
+            <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:'0 0 14px'}}>
+              {draft.when==='later'
+                ? 'Your automation will go live at the time you’ve scheduled it, and can be found in the Automations dashboard.'
+                : 'Your automation will go live immediately and can be found within the Automations dashboard.'}</p>
+            <Btn kind="ghost" onClick={onBack} style={{width:'100%'}}><I.arrowLeft/>BACK TO AUTOMATIONS</Btn>
+          </div>
+        </>}
+    </div>
+  );
+}
+
+function CanvasScreen({mode,automation,draft,phase,answers,setAnswers,onApprove,onRefine,onExit,onAnswer,hint}){
+  // mode: 'create' (thread) | 'open' (detail panel)
+  // phase/answers live in App so leaving mid-creation doesn't restart the run
+  const [openSec,setOpenSec]=useState({ar:true,fr:false,ip:false});
+  const [menu,setMenu]=useState(false); const [log,setLog]=useState(false);
+  const tog=k=>setOpenSec(s=>({...s,[k]:!s[k]}));
+
+  const creating = mode==='create';
+  const showGraph = !creating || phase==='approve' || phase==='done';
+  const title = creating ? draft.name : automation.name;
+  const status = creating
+    ? (phase==='approve' ? 'awaiting_approval' : phase==='done' ? (draft.when==='later'?'scheduled':'running') : null)
+    : automation.status;
+
+  return (
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#fff'}}>
+      <CanvasHeader title={title} status={status} onExit={onExit} hint={hint}/>
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        <div style={{flex:1,position:'relative',background:C.canvas,minWidth:0,overflow:'hidden'}}>
+          <div style={{position:'absolute',inset:0,overflow:'auto'}}>
+            <div style={{padding:'34px 40px 60px'}}>
+              {showGraph ? <CanvasStage plain={creating}/> : <SkeletonStage/>}
+            </div>
+          </div>
+          {showGraph && !creating && <TaskLegend/>}
+        </div>
+
+        <div style={{width:430,borderLeft:`1px solid ${C.line}`,background:'#fff',overflowY:'auto',flexShrink:0}}>
+          {creating
+            ? <div style={{padding:'22px 22px 30px'}}>
+                <CreationThread draft={draft} phase={phase} answers={answers} setAnswers={setAnswers}
+                  onApprove={onApprove} onRefine={onRefine} onBack={onExit}/>
+              </div>
+            : <div style={{padding:'22px 22px 30px'}}>
+                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:4}}>
+                  <h2 className="mont" style={{fontSize:19,fontWeight:600,margin:0}}>{automation.name}</h2>
+                  <div style={{position:'relative',flexShrink:0}}>
+                    <button onClick={()=>setMenu(m=>!m)} style={{width:30,height:28,border:`1px solid ${C.line}`,
+                      borderRadius:6,background:'#fff',cursor:'pointer',color:C.sub,display:'flex',
+                      alignItems:'center',justifyContent:'center'}}><I.kebab/></button>
+                    {menu && <OverflowMenu action={automation.menuAction} onClose={()=>setMenu(false)}
+                      onActivity={()=>setLog(true)}/>}
+                  </div>
+                </div>
+                <div style={{fontSize:12.5,color:C.mute,marginBottom:18}}>
+                  Created by <span style={{color:C.sub,fontWeight:500}}>{automation.by}</span> · {automation.ago}</div>
+                <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>Description</div>
+                <p style={{fontSize:13,color:C.sub,lineHeight:1.55,margin:'0 0 4px'}}>{automation.desc}</p>
+                <button style={{background:'none',border:'none',padding:0,cursor:'pointer',fontSize:13,
+                  fontWeight:500,color:C.indigo}}>Show more</button>
+
+                {automation.progress &&
+                  <div style={{marginTop:20,paddingTop:18,borderTop:`1px solid ${C.lineSoft}`,marginBottom:20}}>
+                    <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Progress</div>
+                    <div style={{fontSize:12,color:C.mute}}>Task {automation.progress.done} of {automation.progress.total}</div>
+                    <div style={{fontSize:13,fontWeight:600,marginTop:3}}>Currently: {automation.progress.current}</div>
+                    <SegBar done={automation.progress.done} total={automation.progress.total}/>
+                  </div>}
+
+                <div style={{display:'flex',flexDirection:'column',gap:11}}>
+                  {openActions(automation).length>0 &&
+                    <Section icon={<I.alert/>} iconColor={C.red} title="Action required"
+                      badge={`${openActions(automation).length} tasks`} badgeBg={C.red} badgeColor="#fff"
+                      open={openSec.ar} onToggle={()=>tog('ar')} danger>
+                      <div style={{display:'flex',flexDirection:'column',gap:9}}>
+                        {openActions(automation).map(t=>
+                          <div key={t.id} style={{display:'flex',alignItems:'center',gap:12,background:'#FAFAFC',
+                            border:`1px solid ${C.lineSoft}`,borderRadius:8,padding:'11px 13px'}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.title}</div>
+                              <div style={{fontSize:11.5,color:C.mute,marginTop:2}}>{t.meta}</div>
+                            </div>
+                            <Btn kind="outline" sm onClick={()=>onAnswer(automation,t,'action')}>Answer</Btn>
+                          </div>)}
+                      </div>
+                    </Section>}
+                  {automation.forReview.length>0 &&
+                    <Section icon={<I.check/>} iconColor={C.green} title="For review"
+                      badge={`${automation.forReview.length} assets`} badgeBg={C.green} badgeColor="#fff"
+                      open={openSec.fr} onToggle={()=>tog('fr')}>
+                      <div style={{border:`1px solid ${C.lineSoft}`,borderRadius:8,overflow:'hidden'}}>
+                        {automation.forReview.map(x=>{const done=x.state==='reviewed';return(
+                          <div key={x.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
+                            borderBottom:`1px solid ${C.lineSoft}`}}>
+                            <Pill label={x.pill} dot={x.dot}/>
+                            <span style={{flex:1,fontSize:12.5,minWidth:0}}>{x.name}</span>
+                            {done &&
+                              <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:11.5,color:C.mute}}>
+                                <span style={{color:C.green,display:'flex'}}><I.check/></span>Reviewed</span>}
+                            {done
+                              ? <Btn kind="ghost" sm onClick={()=>onAnswer(automation,x,'review')}>View</Btn>
+                              : <Btn kind="primary" sm onClick={()=>onAnswer(automation,x,'review')}>Review</Btn>}
+                          </div>);})}
+                      </div>
+                    </Section>}
+                  {automation.inProgress.length>0 &&
+                    <Section icon={<I.info/>} iconColor={C.indigo} title="In-progress"
+                      badge={`${automation.inProgress.length} tasks`} badgeBg={C.indigo} badgeColor="#fff"
+                      open={openSec.ip} onToggle={()=>tog('ip')}>
+                      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                        {automation.inProgress.map(t=>
+                          <div key={t.id} style={{display:'flex',alignItems:'center',gap:12}}>
+                            <div style={{flex:1}}>
+                              <div style={{display:'flex',justifyContent:'space-between',gap:10}}>
+                                <span style={{fontSize:13}}>{t.name}</span>
+                                <span style={{fontSize:11.5,color:C.mute}}>{t.pct}%</span></div>
+                              <div style={{height:4,borderRadius:3,background:'#EDEDF1',marginTop:6,overflow:'hidden'}}>
+                                <div style={{height:'100%',width:`${t.pct}%`,background:C.indigo}}/></div>
+                            </div>
+                            <Btn kind="ghost" sm>View</Btn>
+                          </div>)}
+                      </div>
+                    </Section>}
+                </div>
+              </div>}
+        </div>
+      </div>
+      {log && <ActivityLog onClose={()=>setLog(false)}/>}
+    </div>
+  );
+}
+
+/* ═══════════════════ SCREEN 4 — PBX EDITOR ═══════════════════ */
+const PRODUCTS = [
+  {n:'ADIDAS ORIGINALS | GAZELLE',p:'$79.00',c:'#EDEDF0'},
+  {n:'NIKE RUNNING | PEGASUS TURBO',p:'$130.00',c:'#25252B'},
+  {n:'HERSCHEL SUPPLY | LITTLE AMERICA',p:'$130.00',c:'#2E3F5C'},
+  {n:'CONVERSE | CHUCK 70 HI',p:'$95.00',c:'#C0392B'},
+  {n:'NEW BALANCE | RAINBOW ZANTE',p:'$110.00',c:'#E8E4DC'},
+  {n:'BLUNDSTONE | CLASSIC 550',p:'$200.50',c:'#1F1B18'},
+  {n:'FENTY TIGER | CREEPE PATENT',p:'$160',c:'#F0F0F2'},
+  {n:'FENTY TIGER GELLYTE V',p:'$95.00',c:'#E3B33C'},
+];
+
+/* Placeholder previews for non-variation assets. Fabien flagged that the preview area
+   has to adapt per asset type; the real goal/segment/trigger treatments are still with
+   Christian, so these stand in until those designs land. */
+function StubPreview({kind}){
+  const cfg = {
+    goal:    {title:'Goal configuration', sub:'Checkout conversion',
+              rows:['Trigger','Click on element','Selector','.knl-checkout-cta','Conversion window','30 days','Counting','Once per visitor']},
+    segment: {title:'Segment builder', sub:'Cart value > $50',
+              rows:['Condition','Cart value','Operator','greater than','Value','$50','Match','All visitors matching']},
+    trigger: {title:'Trigger configuration', sub:'Scroll depth',
+              rows:['Type','Scroll','Threshold','50% of page height','Fires','Once per session','Delay','None']},
+  }[kind] || {title:'Asset preview', sub:'', rows:[]};
+  return (
+    <div style={{background:'#fff',minHeight:'100%',padding:'34px 34px 60px'}}>
+      <div style={{display:'inline-flex',alignItems:'center',gap:7,background:C.amberSoft,color:'#8A5A1C',
+        fontSize:11,fontWeight:600,letterSpacing:'.04em',padding:'5px 10px',borderRadius:5,marginBottom:20}}>
+        PLACEHOLDER — DESIGN PENDING
+      </div>
+      <h2 className="mont" style={{fontSize:21,fontWeight:700,margin:'0 0 4px'}}>{cfg.title}</h2>
+      <div style={{fontSize:13,color:C.mute,marginBottom:24}}>{cfg.sub}</div>
+      <div style={{border:`1px solid ${C.line}`,borderRadius:9,overflow:'hidden',maxWidth:520}}>
+        {cfg.rows.map((r,i)=> i%2===0 &&
+          <div key={i} style={{display:'flex',gap:16,padding:'12px 15px',
+            borderBottom:i<cfg.rows.length-2?`1px solid ${C.lineSoft}`:'none',
+            background:i%4===0?'#fff':'#FBFBFD'}}>
+            <span style={{fontSize:12.5,color:C.mute,width:150,flexShrink:0}}>{r}</span>
+            <span style={{fontSize:12.5,color:C.ink,fontWeight:500}}>{cfg.rows[i+1]}</span>
+          </div>)}
+      </div>
+    </div>
+  );
+}
+
+function SitePreview({type}){
+  if(type && type!=='variation') return <StubPreview kind={type}/>;
+  return (
+    <div style={{background:'#fff',minHeight:'100%'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 34px',
+        borderBottom:`1px solid ${C.lineSoft}`}}>
+        <span className="mont" style={{fontSize:19,fontWeight:700}}>Acme Inc.</span>
+        <div style={{display:'flex',gap:16,color:C.sub}}><I.search/><I.copy/></div>
+      </div>
+      <div style={{padding:'34px 34px 60px'}}>
+        <h2 className="mont" style={{fontSize:27,fontWeight:700,textAlign:'center',margin:'0 0 22px'}}>Products</h2>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:26,marginBottom:26}}>
+          <span style={{fontSize:12.5,borderBottom:`2px solid ${C.ink}`,paddingBottom:4}}>All products</span>
+          <span style={{fontSize:12.5,color:C.sub,display:'inline-flex',alignItems:'center',gap:5}}>Sort by <I.chevDown/></span>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:18}}>
+          {PRODUCTS.map((p,i)=>
+            <div key={i}>
+              <div style={{background:p.c,borderRadius:4,aspectRatio:'1/1',marginBottom:9,
+                border:i===2?`2px dashed ${C.indigo}`:'none'}}/>
+              <div style={{fontSize:10,color:C.sub,lineHeight:1.4}}>{p.n}</div>
+              <div style={{fontSize:10,color:C.ink,marginTop:2}}>{p.p}</div>
+            </div>)}
+        </div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:14,marginTop:26,fontSize:11.5,color:C.sub}}>
+          <span>‹</span><span>Page 1 of 4</span><span>›</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditorScreen({automation,item,kind,queue,total,idx,onPrev,onNext,onApprove,onBack,hint}){
+  const [step,setStep]=useState('review'); // review | refine | done
+  const [note,setNote]=useState('');
+  const asset = item;
+  const remaining = queue.length;
+  const isAction = kind==='action';
+  const approve=()=>{ setStep('done'); onApprove(item); };
+
+  return (
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#fff'}}>
+      <div style={{height:58,borderBottom:`1px solid ${C.line}`,display:'flex',alignItems:'center',flexShrink:0}}>
+        <div style={{width:72,height:'100%',borderRight:`1px solid ${C.line}`,display:'flex',alignItems:'center',
+          justifyContent:'center',gap:5}}><I.logo/><span style={{color:C.sub,display:'flex'}}><I.chevDown/></span></div>
+        <div style={{padding:'0 20px',minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600,color:C.ink,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{automation.name}</div>
+          <div style={{fontSize:12,color:C.sub,display:'inline-flex',alignItems:'center',gap:5}}>
+            {asset.name}<I.chevDown/></div>
+        </div>
+        <DemoHint step={hint}/>
+        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:4,padding:'0 14px',color:C.sub}}>
+          {[<I.desktop/>,<I.tablet/>,<I.mobile/>].map((ic,i)=>
+            <button key={i} style={{width:30,height:28,border:'none',borderRadius:6,background:i===0?'#F1F1F6':'transparent',
+              cursor:'pointer',color:i===0?C.ink:C.sub,display:'flex',alignItems:'center',justifyContent:'center'}}>{ic}</button>)}
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:4,padding:'0 18px 0 0',color:C.sub,borderLeft:`1px solid ${C.line}`,marginLeft:4,paddingLeft:14}}>
+          {[<I.panel/>,<I.code/>,<I.kanban/>].map((ic,i)=>
+            <button key={i} style={{width:30,height:28,borderRadius:6,cursor:'pointer',display:'flex',
+              alignItems:'center',justifyContent:'center',
+              border:i===0?`1px solid ${C.indigo}`:'1px solid transparent',
+              background:i===0?'#F5F5FE':'transparent',color:i===0?C.indigo:C.sub}}>{ic}</button>)}
+        </div>
+      </div>
+
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        <div style={{flex:1,overflowY:'auto',background:'#F4F4F6',padding:18,minWidth:0}}>
+          <div style={{background:'#fff',borderRadius:8,overflow:'hidden',border:`1px solid ${C.line}`,minHeight:'100%'}}>
+            <SitePreview type={item.type}/>
+          </div>
+        </div>
+
+        <div style={{width:390,borderLeft:`1px solid ${C.line}`,background:'#fff',display:'flex',
+          flexDirection:'column',flexShrink:0,overflowY:'auto'}}>
+          <div style={{padding:'16px 18px',borderBottom:`1px solid ${C.lineSoft}`}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+              <Pill label={asset.pill} dot={asset.dot}/>
+              <span className="mont" style={{fontSize:16,fontWeight:600,flex:1,minWidth:0,overflow:'hidden',
+                textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{asset.name}</span>
+              <div style={{display:'flex',gap:4,flexShrink:0}}>
+                {[[onPrev,idx<=0,<I.arrowLeft/>],[onNext,idx<0||idx>=queue.length-1,<I.arrowRight/>]].map(([fn,off,ic],i)=>
+                  <button key={i} onClick={off?undefined:fn} disabled={off}
+                    title={off?(i?'No further items':'No previous items'):(i?'Next':'Previous')}
+                    style={{width:28,height:26,border:`1px solid ${C.line}`,borderRadius:6,background:'#fff',
+                      cursor:off?'not-allowed':'pointer',color:off?'#C8C8D0':C.sub,
+                      display:'flex',alignItems:'center',justifyContent:'center'}}>{ic}</button>)}
+              </div>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:9}}>
+              <span style={{fontSize:12,color:C.mute}}>
+                {isAction
+                  ? `${remaining} action${remaining===1?'':'s'} remaining`
+                  : `Asset ${idx<0?total:idx+1} of ${total}`}</span>
+              <span style={{fontSize:10.5,color:C.indigo,border:`1px solid #C9C9F5`,borderRadius:5,padding:'2px 8px'}}>
+                {step==='done'?'Approved':'Ready for review'}</span>
+            </div>
+            {isAction && total>0 &&
+              <div style={{height:4,borderRadius:3,background:'#EDEDF1',overflow:'hidden',marginTop:9}}>
+                <div style={{height:'100%',borderRadius:3,background:C.indigo,transition:'width .25s',
+                  width:`${(total-remaining)/total*100}%`}}/>
+              </div>}
+          </div>
+
+          <div style={{padding:18,display:'flex',flexDirection:'column',gap:11}}>
+            {step==='done' && <>
+              <div style={{display:'flex',alignItems:'center',gap:9,border:`1px solid ${C.line}`,borderRadius:8,padding:'10px 13px'}}>
+                <span style={{color:C.green,display:'flex'}}><I.check/></span>
+                <span style={{fontSize:12.5,color:C.sub}}>{asset.name} has been approved.</span>
+              </div>
+              {isAction
+                ? <div style={{border:`1px solid ${C.line}`,borderRadius:9,padding:'14px 15px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:10}}>
+                      <span style={{color:C.green,display:'flex'}}><I.check/></span>
+                      <span style={{fontSize:12.5,fontWeight:600}}>Nothing else needs your attention</span></div>
+                    <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:'0 0 14px'}}>
+                      You’ve cleared every outstanding action on this automation. It’s running again — I’ll
+                      let you know on the dashboard if anything else comes up.</p>
+                    <Btn kind="primary" onClick={onBack} style={{width:'100%',padding:'12px'}}>
+                      <I.arrowLeft/>BACK TO AUTOMATIONS</Btn>
+                  </div>
+                : <div style={{border:`1px solid ${C.line}`,borderRadius:9,padding:'14px 15px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:10}}>
+                      <span style={{color:C.green,display:'flex'}}><I.check/></span>
+                      <span style={{fontSize:12.5,fontWeight:600}}>All assets reviewed</span></div>
+                    <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:'0 0 10px'}}>
+                      Great work! You’ve reviewed and approved all assets generated by this automation.</p>
+                    <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:'0 0 14px'}}>
+                      To use them in your campaigns, sync the assets below. Once synced, they will appear on their respective dashboards on your account.</p>
+                    <Btn kind="primary" onClick={onBack} style={{width:'100%',padding:'12px'}}>
+                      <I.repeat/>SYNC ASSETS TO DASHBOARDS</Btn>
+                  </div>}
+            </>}
+
+            {step==='review' &&
+              <ThreadCard title={isAction?`Action required: ${item.title}`:'Action required: Review this asset'}>
+                <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:'0 0 14px'}}>
+                  {isAction
+                    ? <>The automation {automation.name} requires your feedback to continue running.
+                        Please approve or refine <strong style={{color:C.ink,fontWeight:600}}>{item.name}</strong>.</>
+                    : <><strong style={{color:C.ink,fontWeight:600}}>{item.name}</strong> was created by this
+                        automation and is ready for your review. Please approve or refine the asset.</>}</p>
+                <div style={{display:'flex',justifyContent:'flex-end',gap:9}}>
+                  <Btn kind="ghost" onClick={()=>setStep('refine')}><I.repeat/>REFINE</Btn>
+                  <Btn kind="outline" onClick={approve}><I.check/>APPROVE</Btn>
+                </div>
+              </ThreadCard>}
+
+            {step==='refine' &&
+              <ThreadCard title={isAction?`Action required: ${item.title}`:'Action required: Review this asset'}>
+                <p style={{fontSize:12.5,color:C.sub,lineHeight:1.6,margin:'0 0 12px'}}>
+                  Please describe the changes you’d like to make.</p>
+                <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Describe your changes"
+                  style={{width:'100%',minHeight:74,padding:'10px 12px',border:`1px solid ${C.line}`,borderRadius:7,
+                    fontSize:12.5,outline:'none',resize:'vertical',marginBottom:12}}/>
+                <div style={{display:'flex',justifyContent:'flex-end',gap:9}}>
+                  <Btn kind="ghost" onClick={()=>setStep('review')}><I.arrowLeft/>BACK</Btn>
+                  <Btn kind="primary" onClick={approve}>APPLY</Btn>
+                </div>
+              </ThreadCard>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ APP ═══════════════════ */
+const titleFromPrompt = t => {
+  /* Prompts open with "Create an experiment to ..."; the automation should be named
+     for what it does, not for the instruction that produced it. */
+  const w = t.replace(/\s+/g,' ').trim()
+    .replace(/^(create|build|make|set ?up|run)\s+(an?\s+)?(experiment|test|automation|workflow)\s+(to|that|which)\s+/i,'')
+    .split(/[(,.;]/)[0].trim().split(' ').slice(0,5);
+  while(w.length>2 && /^(with|and|for|to|using|that|on|in|the|a|an)$/i.test(w[w.length-1])) w.pop();
+  const s2 = w.join(' ');
+  return s2.charAt(0).toUpperCase()+s2.slice(1);
+};
+
+function App(){
+  const [screen,setScreen]=useState('home'); // home | dashboard | new | canvas | editor
+  const [automations,setAutomations]=useState(AUTOMATIONS);
+  const [selectedId,setSelectedId]=useState('a1');
+  const [canvasId,setCanvasId]=useState(null);       // an existing automation opened on the canvas
+  const [draft,setDraft]=useState(null);             // the in-flight creation run (form output + row id)
+  const [editor,setEditor]=useState(null);           // {aid, itemId, kind}
+  const [phase,setPhase]=useState('analyzing');
+  const [answers,setAnswers]=useState({});
+
+  const patch=(id,p)=>setAutomations(prev=>prev.map(a=>a.id===id?{...a,...p}:a));
+  const selected  = automations.find(a=>a.id===selectedId)||null;
+  const canvasFor = automations.find(a=>a.id===canvasId)||null;
+
+  /* The creation run is driven from here, not from CanvasScreen, so that walking away
+     mid-generation doesn't unmount the timers and restart the whole thing. */
+  useEffect(()=>{ if(!draft||phase!=='analyzing') return;
+    const t=setTimeout(()=>setPhase('clarify'),1300); return ()=>clearTimeout(t); },[draft,phase]);
+  useEffect(()=>{ if(!draft||phase!=='clarify') return;
+    if(CLARIFY.every(q=>answers[q.k])){
+      const t=setTimeout(()=>setPhase('planning'),450); return ()=>clearTimeout(t); }},[draft,phase,answers]);
+  useEffect(()=>{ if(!draft||phase!=='planning') return;
+    const t=setTimeout(()=>{
+      setPhase('approve');
+      patch(draft.id,{status:'awaiting_approval',chips:[{k:'plan',t:'Automation plan ready'}]});
+    },4000);
+    return ()=>clearTimeout(t); },[draft,phase]);
+
+  function startCreation(d){
+    const id='n'+Date.now(), scheduled=d.when==='later';
+    setAutomations(prev=>[{
+      id, name:d.name, by:'Paul Tremblay', ago:'Just now',
+      status:'draft', bar:'#3838E7', menuAction:'run', desc:d.desc,
+      chips:[{k:'busy',t:'Generating automation plan'}],
+      when: scheduled?(d.schedule||'Scheduled'):null,
+      repeats: d.repeat?`Repeats ${String(d.repeat).toLowerCase()}`:null,
+      progress:null, actionRequired:[], forReview:[], inProgress:[],
+    },...prev]);
+    setDraft({...d,id}); setPhase('analyzing'); setAnswers({});
+    setCanvasId(null); setSelectedId(id); setScreen('canvas');
+  }
+
+  function approvePlan(){
+    if(!draft) return;
+    const id=draft.id, live=draft.when==='later'?'scheduled':'running';
+    setPhase('done');
+    patch(id,{status:live, chips:[],
+      progress:{done:1,total:6,current:'Creating variations'},
+      inProgress:[{id:id+'-ip1',name:'Creating variations',pct:20}]});
+    if(live!=='running') return;
+    /* A live automation hits its first clarifications shortly after starting. */
+    setTimeout(()=>setAutomations(prev=>prev.map(a=>a.id!==id?a:{...a,
+      status:'action_required',
+      chips:[{k:'action',t:'2 tasks require action'}],
+      progress:{done:2,total:6,current:'Creating variations'},
+      actionRequired:[
+        {id:id+'-ar1', title:'Approve the express checkout build', meta:'Add variations · just now',
+         resolved:false, type:'variation', pill:'Variation 2', dot:'#3838E7', name:'Express checkout'},
+        {id:id+'-ar2', title:'Confirm the experiment targeting', meta:'Experiment configuration · just now',
+         resolved:false, type:'segment', pill:'Segment', dot:null, name:'New visitors from the USA'},
+      ],
+      inProgress:[{id:id+'-ip1',name:'Creating variations',pct:45}],
+    })),7000);
+  }
+
+  /* Leaving the canvas keeps an unfinished run alive; only a finished one is cleared. */
+  const leaveCanvas=()=>{ if(phase==='done') setDraft(null); setCanvasId(null); setScreen('dashboard'); };
+  const openEditor=(a,item,kind)=>{ setEditor({aid:a.id,itemId:item.id,kind}); setScreen('editor'); };
+
+  function approveItem(it){
+    const {aid,kind}=editor;
+    const a=automations.find(x=>x.id===aid); if(!a) return;
+    const oldQ = kind==='action'?openActions(a):openAssets(a);
+    const at = oldQ.findIndex(x=>x.id===it.id);
+    const next = kind==='action'
+      ? {...a, actionRequired:(a.actionRequired||[]).map(t=>t.id===it.id?{...t,resolved:true}:t)}
+      : {...a, forReview:(a.forReview||[]).map(x=>x.id===it.id?{...x,state:'reviewed'}:x)};
+    const q = kind==='action'?openActions(next):openAssets(next);
+    if(kind==='action'){
+      if(q.length){
+        next.status='action_required';
+        next.chips=[{k:'action',t:`${q.length} task${q.length===1?'':'s'} require action`}];
+      } else {
+        /* Last action cleared - the run finishes and its assets queue up for sync. */
+        next.status='review_results';
+        next.chips=[{k:'review',t:'Automation results ready for review'}];
+        next.progress=null; next.inProgress=[];
+        next.forReview=[
+          {id:aid+'-v1', pill:'Variation 1', dot:'#3838E7', name:'Simplified form',  state:'reviewed', type:'variation'},
+          {id:aid+'-v2', pill:'Variation 2', dot:'#3838E7', name:'Express checkout', state:'reviewed', type:'variation'},
+          {id:aid+'-v3', pill:'Variation 3', dot:'#E08C36', name:'Trust badges',     state:'reviewed', type:'variation'},
+          {id:aid+'-s1', pill:'Segment', dot:null, name:'New visitors from the USA', state:'reviewed', type:'segment'},
+          {id:aid+'-g1', pill:'Goal',    dot:null, name:'Checkout button clicks',    state:'reviewed', type:'goal'},
+        ];
+      }
+    }
+    setAutomations(prev=>prev.map(x=>x.id===aid?next:x));
+    const follow = q[Math.min(at,q.length-1)];
+    if(follow) setEditor(e=>({...e,itemId:follow.id}));
+  }
+
+  const syncAssets=a=>patch(a.id,{status:'synced',chips:[]});
+
+  const edAuto = editor ? automations.find(x=>x.id===editor.aid) : null;
+  const edItem = edAuto ? findItem(edAuto,editor.itemId) : null;
+
+  /* Which of the seven demo screens we are standing on. */
+  let hint=null;
+  if(screen==='home'||screen==='new') hint=DEMO.prompt;
+  else if(screen==='canvas') hint = canvasId
+    ? (canvasFor && openActions(canvasFor).length ? DEMO.pending : null)
+    : (phase==='approve'?DEMO.approve : phase==='done'?DEMO.started : DEMO.building);
+  else if(screen==='editor') hint = (edItem && edItem.type==='segment') ? DEMO.target : DEMO.build;
+  else hint = selected && selected.status==='review_results' ? DEMO.sync
+            : selected && openActions(selected).length ? DEMO.pending
+            : DEMO.kanban;
+
+  if(screen==='canvas' && (canvasFor||draft))
+    return <CanvasScreen mode={canvasId?'open':'create'} automation={canvasFor} draft={draft}
+      phase={phase} answers={answers} setAnswers={setAnswers} hint={hint}
+      onApprove={approvePlan} onRefine={()=>setPhase('clarify')} onExit={leaveCanvas}
+      onAnswer={(a,t,kind)=>openEditor(a,t,kind)}/>;
+  if(screen==='editor' && edItem){
+    const kind = editor.kind;
+    const queue = kind==='action'?openActions(edAuto):openAssets(edAuto);
+    const total = kind==='action'?(edAuto.actionRequired||[]).length:(edAuto.forReview||[]).length;
+    const idx = queue.findIndex(x=>x.id===edItem.id);
+    return <EditorScreen key={edItem.id} automation={edAuto} item={edItem} kind={kind}
+      queue={queue} total={total} idx={idx}
+      onPrev={()=>setEditor(e=>({...e,itemId:queue[idx-1].id}))}
+      onNext={()=>setEditor(e=>({...e,itemId:queue[idx+1].id}))}
+      onApprove={approveItem} hint={hint}
+      onBack={()=>{setEditor(null);setScreen(canvasId?'canvas':'dashboard');}}/>;
+  }
+
+  return (
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#fff'}}>
+      <AppHeader hint={hint}/>
+      <div style={{flex:1,minHeight:0,display:'flex',overflow:'hidden'}}>
+        {screen==='home'
+          ? <HomeScreen onAutomations={()=>setScreen('dashboard')} onNew={()=>setScreen('new')}
+              onPrompt={t=>startCreation({name:titleFromPrompt(t),desc:t,when:'now',schedule:null,repeat:null})}/>
+          : <div style={{flex:1,minWidth:0}}><KaiShell onHome={()=>setScreen('home')} onClose={()=>setScreen('home')}>
+              {screen!=='new' && <>
+                <AutomationsList automations={automations} selectedId={selectedId}
+                  onSelect={a=>setSelectedId(a.id)} onNew={()=>setScreen('new')}/>
+                {selected && <DetailPanel a={selected}
+                  onClose={()=>setSelectedId(null)}
+                  onOpen={()=>{
+                    if(draft&&selected.id===draft.id) setCanvasId(null);
+                    else setCanvasId(selected.id);
+                    setScreen('canvas');
+                  }}
+                  onAnswer={(a,t)=>openEditor(a,t,'action')}
+                  onReviewAsset={(a,x)=>openEditor(a,x,'review')}
+                  onSync={syncAssets}/>}
+              </>}
+              {screen==='new' &&
+                <NewAutomation onCancel={()=>setScreen('dashboard')} onBuild={startCreation}/>}
+            </KaiShell></div>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

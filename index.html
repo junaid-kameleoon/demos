@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Demos</title>
+<style>
+  :root{--ink:#1B1B23;--sub:#5B5B66;--mute:#8E8E9A;--line:#E4E4EA;--bg:#FCFCFD;--accent:#3838E7;}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);}
+  main{width:100%;max-width:520px}
+  h1{font-size:22px;font-weight:600;letter-spacing:-.01em;margin:0 0 6px}
+  p.lede{color:var(--mute);margin:0 0 26px;font-size:14px}
+  a.card{display:flex;align-items:center;gap:14px;padding:16px 18px;border:1px solid var(--line);
+    border-radius:10px;background:#fff;text-decoration:none;color:inherit;transition:border-color .12s,box-shadow .12s}
+  a.card:hover{border-color:var(--accent);box-shadow:0 2px 14px rgba(56,56,231,.10)}
+  .bar{width:4px;align-self:stretch;border-radius:3px;background:var(--accent)}
+  .name{font-weight:600}
+  .desc{color:var(--sub);font-size:13.5}
+  .arrow{margin-left:auto;color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Demos</h1>
+  <p class="lede">Interactive prototypes. Mock data only.</p>
+  <a class="card" href="pbx-automate/">
+    <span class="bar"></span>
+    <span>
+      <span class="name">PBX Automate</span><br>
+      <span class="desc">Click-through of the automation flow</span>
+    </span>
+    <span class="arrow">&rarr;</span>
+  </a>
+</main>
+</body>
+</html>
